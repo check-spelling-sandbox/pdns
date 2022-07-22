@@ -79,7 +79,7 @@ aton
 attr
 atype
 authanswers
-AUTHIP
+authip
 Authoritativedoc
 auths
 authzone
@@ -397,6 +397,7 @@ dnsdistdoc
 dnsdomain
 dnsext
 dnsgram
+DNSHEADER
 dnsheader
 dnskey
 dnsmessage
@@ -701,6 +702,7 @@ homepage
 Hooimeijer
 hostmaster
 hostname
+hostnames
 Hotmail
 howto
 hpecorp
@@ -987,6 +989,7 @@ Memusage
 menuselection
 metadata
 metadatabase
+metadatas
 metainformation
 metricnames
 metricscarbon
@@ -1277,6 +1280,7 @@ poolers
 poolname
 portnum
 portnumber
+Postgre
 postgre
 postgresql
 postinst
@@ -1589,6 +1593,7 @@ Spruyt
 SQk
 sql
 sqlite
+SQLs
 srandom
 src
 srcname
@@ -1706,6 +1711,7 @@ timesource
 timestamped
 timeval
 timezone
+timezones
 tinycdb
 tinydns
 tinydnsbackend
@@ -1802,6 +1808,7 @@ usr
 utf
 UUHJWZg
 uuid
+UUIDs
 uwaterloo
 Valentei
 Valentini
@@ -1846,6 +1853,7 @@ webhandler
 webpassword
 webserver
 website
+websites
 Webspider
 Wegener
 weightparams
