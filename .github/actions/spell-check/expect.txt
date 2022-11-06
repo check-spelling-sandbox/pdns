@@ -899,6 +899,7 @@ lowerroman
 Lrhazi
 lsock
 lte
+lto
 luaaction
 luabackend
 luac
