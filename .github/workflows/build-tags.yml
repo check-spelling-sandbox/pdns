@@ -11,6 +11,10 @@ on:
 jobs:
   call-build-packages-auth:
     uses: PowerDNS/pdns/.github/workflows/build-packages.yml@master
+    permissions:
+      id-token: write
+      actions: read
+      contents: write
     if: startsWith(github.ref_name, 'auth')
     with:
       is_release: 'YES'
@@ -22,6 +26,10 @@ jobs:
       DOWNLOADS_AUTOBUILT_HOSTKEY: ${{ secrets.DOWNLOADS_AUTOBUILT_HOSTKEY }}
 
   call-build-packages-dnsdist:
+    permissions:
+      id-token: write
+      actions: read
+      contents: write
     uses: PowerDNS/pdns/.github/workflows/build-packages.yml@master
     if: startsWith(github.ref_name, 'dnsdist')
     with:
@@ -34,6 +42,10 @@ jobs:
       DOWNLOADS_AUTOBUILT_HOSTKEY: ${{ secrets.DOWNLOADS_AUTOBUILT_HOSTKEY }}
 
   call-build-packages-rec:
+    permissions:
+      id-token: write
+      actions: read
+      contents: write
     uses: PowerDNS/pdns/.github/workflows/build-packages.yml@master
     if: startsWith(github.ref_name, 'rec')
     with:
