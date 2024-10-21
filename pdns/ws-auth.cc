@@ -2748,7 +2748,7 @@ void AuthWebServer::webThread()
       d_ws->registerApiHandler("/api/v1/servers/localhost", apiServerDetail, "GET");
       d_ws->registerApiHandler("/api/v1/servers", apiServer, "GET");
       d_ws->registerApiHandler("/api/v1", apiDiscoveryV1, "GET");
-      d_ws->registerApiHandler("/api/docs", apiDocs, "GET");
+      d_ws->registerWebHandler("/api/docs", apiDocs, "GET");
       d_ws->registerApiHandler("/api", apiDiscovery, "GET");
     }
     if (::arg().mustDo("webserver")) {

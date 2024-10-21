@@ -47,6 +47,30 @@ api-key=%s
         self.assertEqual(r.status_code, 200)
         self.assertTrue(r.json())
 
+    def testAPIWithWrongKey(self):
+        self.waitForTCPSocket("127.0.0.1", self._wsPort)
+        headers = {'x-api-key': self._apiKey + '-wrong'}
+        url = 'http://127.0.0.1:' + str(self._wsPort) + '/api/v1/servers/localhost/statistics'
+        r = requests.get(url, headers=headers, timeout=self._wsTimeout)
+        self.assertFalse(r)
+        self.assertEqual(r.status_code, 401)
+
+    def testAPIWithoutKey(self):
+        self.waitForTCPSocket("127.0.0.1", self._wsPort)
+        headers = {}
+        url = 'http://127.0.0.1:' + str(self._wsPort) + '/api/v1/servers/localhost/statistics'
+        r = requests.get(url, headers=headers, timeout=self._wsTimeout)
+        self.assertFalse(r)
+        self.assertEqual(r.status_code, 401)
+
+    def testDocs(self):
+        self.waitForTCPSocket("127.0.0.1", self._wsPort)
+        headers = {'x-api-key': self._apiKey}
+        url = 'http://127.0.0.1:' + str(self._wsPort) + '/api/docs'
+        r = requests.get(url, headers=headers, timeout=self._wsTimeout)
+        self.assertFalse(r)
+        self.assertEqual(r.status_code, 405)
+
 class APIDeniedRecursorTest(APIRecursorTest):
     _confdir = 'APIDeniedRecursor'
     _wsPort = 8042
@@ -72,3 +96,27 @@ api-key=%s
             self.assertTrue(False)
         except requests.exceptions.ConnectionError as exp:
             pass
+
+    def testAPIWithWrongKey(self):
+        self.waitForTCPSocket("127.0.0.1", self._wsPort)
+        headers = {'x-api-key': self._apiKey + '-wrong'}
+        url = 'http://127.0.0.1:' + str(self._wsPort) + '/api/v1/servers/localhost/statistics'
+        r = requests.get(url, headers=headers, timeout=self._wsTimeout)
+        self.assertFalse(r)
+        self.assertEqual(r.status_code, 401)
+
+    def testAPIWithoutKey(self):
+        self.waitForTCPSocket("127.0.0.1", self._wsPort)
+        headers = {}
+        url = 'http://127.0.0.1:' + str(self._wsPort) + '/api/v1/servers/localhost/statistics'
+        r = requests.get(url, headers=headers, timeout=self._wsTimeout)
+        self.assertFalse(r)
+        self.assertEqual(r.status_code, 401)
+
+    def testDocs(self):
+        self.waitForTCPSocket("127.0.0.1", self._wsPort)
+        headers = {'x-api-key': self._apiKey}
+        url = 'http://127.0.0.1:' + str(self._wsPort) + '/api/docs'
+        r = requests.get(url, headers=headers, timeout=self._wsTimeout)
+        self.assertFalse(r)
+        self.assertEqual(r.status_code, 405)
