@@ -1,5 +1,6 @@
 /docs/
 ^docs/
 \.md$
+\.rst$
 pdns/recursordist/settings/table.py
 regression-tests.*/description
