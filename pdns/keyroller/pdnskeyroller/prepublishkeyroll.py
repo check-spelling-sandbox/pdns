@@ -1,6 +1,6 @@
 import pdnsapi.api
 import json_tricks.nonp as json_tricks
-from pdnskeyroller.util import (get_keys_of_type, DNSKEY_ALGO_TO_MNEMONIC, DNSKEY_MNEMONIC_TO_ALGO, validate_api)
+from pdnskeyroller.util import (get_keys_of_type, DNSKEY_ALGO_TO_MNEMONIC, validate_api)
 from datetime import datetime, timedelta
 from pdnskeyroller.keyroll import KeyRoll
 

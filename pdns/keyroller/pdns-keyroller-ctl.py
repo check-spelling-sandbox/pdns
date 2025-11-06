@@ -2,12 +2,10 @@
 import argparse
 import logging
 import sys
-from pdnskeyroller import domainstate, domainconfig, keyrollerdomain
+from pdnskeyroller import domainconfig, keyrollerdomain
 from pdnskeyroller.config import KeyrollerConfig
-from pdnskeyroller.prepublishkeyroll import PrePublishKeyRoll
 from pdnsapi.api import PDNSApi
 from datetime import datetime, timedelta
-import random
 
 logger = logging.getLogger('pdns-keyroller')
 
