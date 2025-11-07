@@ -248,7 +248,6 @@ class DOHTests(object):
         """
         DOH: Empty GET query
         """
-        name = 'empty-get.doh.tests.powerdns.com.'
         url = self._dohBaseURL
         conn = self.openDOHConnection(self._dohServerPort, self._caCert, timeout=2.0)
         conn.setopt(pycurl.URL, url)
@@ -266,7 +265,6 @@ class DOHTests(object):
         """
         if self._dohLibrary == 'h2o':
             raise unittest.SkipTest('h2o tries to parse the qname early, so this check will fail')
-        name = 'zero-qdcount.doh.tests.powerdns.com.'
         query = dns.message.Message()
         query.id = 0
         query.flags &= ~dns.flags.RD
