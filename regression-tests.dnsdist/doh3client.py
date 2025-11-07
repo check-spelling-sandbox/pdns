@@ -169,10 +169,8 @@ async def perform_http_request(
             data=data,
             headers=headers,
         )
-        method = "POST"
     else:
         http_events = await client.get(url, headers=additional_headers)
-        method = "GET"
     elapsed = time.time() - start
 
     result = bytes()
