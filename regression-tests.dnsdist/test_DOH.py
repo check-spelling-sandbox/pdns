@@ -315,7 +315,6 @@ class DOHTests(object):
         """
         name = 'invalid-b64-get.doh.tests.powerdns.com.'
         query = dns.message.make_query(name, 'A', 'IN', use_edns=False)
-        wire = query.to_wire()
         url = self._dohBaseURL + '?dns=' + '_-~~~~-_'
         conn = self.openDOHConnection(self._dohServerPort, self._caCert, timeout=2.0)
         conn.setopt(pycurl.URL, url)
