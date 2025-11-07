@@ -1651,7 +1651,6 @@ class DOHFrontendLimits(object):
         """
         DoH Frontend Limits: Maximum number of conns per DoH frontend
         """
-        name = 'maxconnsperfrontend.doh.tests.powerdns.com.'
         query = b"GET / HTTP/1.0\r\n\r\n"
         conns = []
 
