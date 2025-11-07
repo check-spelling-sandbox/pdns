@@ -1868,7 +1868,7 @@ class DOHLimits(object):
         for conn in conns:
             try:
                 conn.perform_rb()
-                rcode = conn.getinfo(pycurl.RESPONSE_CODE)
+                conn.getinfo(pycurl.RESPONSE_CODE)
                 count = count + 1
             except:
                 failed = failed + 1
