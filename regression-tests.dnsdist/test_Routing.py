@@ -486,7 +486,6 @@ class TestRoutingOrder(DNSDistTest):
                 self.assertEqual(query, receivedQuery)
                 self.assertEqual(response, receivedResponse)
 
-        total = 0
         if 'UDP Responder' in self._responsesCounter:
             self.assertEqual(self._responsesCounter['UDP Responder'], 0)
         self.assertEqual(self._responsesCounter['UDP Responder 2'], numberOfQueries)
