@@ -313,7 +313,6 @@ class TestRoutingRoundRobinLBAllDown(DNSDistTest):
         """
         Routing: Round Robin with all servers down
         """
-        numberOfQueries = 10
         name = 'alldown.rr.routing.tests.powerdns.com.'
         query = dns.message.make_query(name, 'A', 'IN')
         response = dns.message.make_response(query)
