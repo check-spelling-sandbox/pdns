@@ -1066,7 +1066,6 @@ class TestProxyProtocolIncomingValuesViaLua(DNSDistTest):
             query = dns.message.make_query(name, 'A', 'IN')
             # dnsdist set RA = RD for spoofed responses
             query.flags &= ~dns.flags.RD
-            response = dns.message.make_response(query)
 
             expectedResponse = dns.message.make_response(query)
             rrset = dns.rrset.from_text(name,
