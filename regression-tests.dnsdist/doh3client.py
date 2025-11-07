@@ -159,7 +159,6 @@ async def perform_http_request(
     additional_headers: Optional[Dict] = None,
 ) -> Tuple[str, Dict[str, str]]:
     # perform request
-    start = time.time()
     if data is not None:
         headers = copy.deepcopy(additional_headers) if additional_headers else {}
         headers["content-length"] = str(len(data))
@@ -171,7 +170,6 @@ async def perform_http_request(
         )
     else:
         http_events = await client.get(url, headers=additional_headers)
-    elapsed = time.time() - start
 
     result = bytes()
     headers = {}
