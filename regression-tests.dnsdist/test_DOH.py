@@ -278,7 +278,6 @@ class DOHTests(object):
         """
         DOH: Short path in GET query
         """
-        name = 'short-path-get.doh.tests.powerdns.com.'
         url = self._dohBaseURL + '/AA'
         conn = self.openDOHConnection(self._dohServerPort, self._caCert, timeout=2.0)
         conn.setopt(pycurl.URL, url)
