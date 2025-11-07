@@ -1910,7 +1910,6 @@ class DOHXFR(object):
         name = 'xfr.doh.tests.powerdns.com.'
         for xfrType in [dns.rdatatype.AXFR, dns.rdatatype.IXFR]:
             query = dns.message.make_query(name, xfrType, 'IN')
-            url = self.getDOHGetURL(self._dohBaseURL, query)
 
             expectedResponse = dns.message.make_response(query)
             expectedResponse.set_rcode(dns.rcode.NOTIMP)
