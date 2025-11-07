@@ -255,7 +255,7 @@ class DOHTests(object):
         conn.setopt(pycurl.SSL_VERIFYPEER, 1)
         conn.setopt(pycurl.SSL_VERIFYHOST, 2)
         conn.setopt(pycurl.CAINFO, self._caCert)
-        data = conn.perform_rb()
+        conn.perform_rb()
         rcode = conn.getinfo(pycurl.RESPONSE_CODE)
         self.assertEqual(rcode, 400)
 
@@ -286,7 +286,7 @@ class DOHTests(object):
         conn.setopt(pycurl.SSL_VERIFYPEER, 1)
         conn.setopt(pycurl.SSL_VERIFYHOST, 2)
         conn.setopt(pycurl.CAINFO, self._caCert)
-        data = conn.perform_rb()
+        conn.perform_rb()
         rcode = conn.getinfo(pycurl.RESPONSE_CODE)
         self.assertEqual(rcode, 404)
 
@@ -305,7 +305,7 @@ class DOHTests(object):
         conn.setopt(pycurl.SSL_VERIFYPEER, 1)
         conn.setopt(pycurl.SSL_VERIFYHOST, 2)
         conn.setopt(pycurl.CAINFO, self._caCert)
-        data = conn.perform_rb()
+        conn.perform_rb()
         rcode = conn.getinfo(pycurl.RESPONSE_CODE)
         self.assertEqual(rcode, 400)
 
@@ -323,7 +323,7 @@ class DOHTests(object):
         conn.setopt(pycurl.SSL_VERIFYPEER, 1)
         conn.setopt(pycurl.SSL_VERIFYHOST, 2)
         conn.setopt(pycurl.CAINFO, self._caCert)
-        data = conn.perform_rb()
+        conn.perform_rb()
         rcode = conn.getinfo(pycurl.RESPONSE_CODE)
         self.assertEqual(rcode, 400)
 
@@ -343,7 +343,7 @@ class DOHTests(object):
         conn.setopt(pycurl.SSL_VERIFYPEER, 1)
         conn.setopt(pycurl.SSL_VERIFYHOST, 2)
         conn.setopt(pycurl.CAINFO, self._caCert)
-        data = conn.perform_rb()
+        conn.perform_rb()
         rcode = conn.getinfo(pycurl.RESPONSE_CODE)
         self.assertEqual(rcode, 400)
 
@@ -365,7 +365,7 @@ class DOHTests(object):
         conn.setopt(pycurl.SSL_VERIFYHOST, 2)
         conn.setopt(pycurl.CAINFO, self._caCert)
         conn.setopt(pycurl.CUSTOMREQUEST, 'PATCH')
-        data = conn.perform_rb()
+        conn.perform_rb()
         rcode = conn.getinfo(pycurl.RESPONSE_CODE)
         self.assertEqual(rcode, 400)
 
@@ -524,7 +524,7 @@ class DOHTests(object):
         conn.setopt(pycurl.SSL_VERIFYPEER, 1)
         conn.setopt(pycurl.SSL_VERIFYHOST, 2)
         conn.setopt(pycurl.CAINFO, self._caCert)
-        data = conn.perform_rb()
+        conn.perform_rb()
         rcode = conn.getinfo(pycurl.RESPONSE_CODE)
         self.assertEqual(rcode, 403)
 
@@ -1867,7 +1867,7 @@ class DOHLimits(object):
         failed = 0
         for conn in conns:
             try:
-                data = conn.perform_rb()
+                conn.perform_rb()
                 rcode = conn.getinfo(pycurl.RESPONSE_CODE)
                 count = count + 1
             except:
