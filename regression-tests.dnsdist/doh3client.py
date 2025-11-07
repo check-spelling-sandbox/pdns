@@ -157,7 +157,7 @@ async def perform_http_request(
     include: bool,
     output_dir: Optional[str],
     additional_headers: Optional[Dict] = None,
-) -> None:
+) -> Tuple[str, Dict[str, str]]:
     # perform request
     start = time.time()
     if data is not None:
@@ -197,7 +197,7 @@ async def async_h3_query(
     post: bool,
     create_protocol=HttpClient,
     additional_headers: Optional[Dict] = None,
-) -> None:
+) -> Union[Tuple[str, Dict[str, str]], Tuple[asyncio.TimeoutError, Dict[str]]]:
 
     url = baseurl
     if not post:
