@@ -1,4 +1,4 @@
-import pdnsapi.api
+from pdnsapi.api import PDNSApi
 import json_tricks.nonp as json_tricks
 from pdnskeyroller.util import (get_keys_of_type, DNSKEY_ALGO_TO_MNEMONIC, DNSKEY_MNEMONIC_TO_ALGO, validate_api)
 from datetime import datetime, timedelta
@@ -24,7 +24,7 @@ class PrePublishKeyRoll(KeyRoll):
         self.old_keyids = kwargs.get('old_keyids')
         self.new_keyid = kwargs.get('new_keyid')
 
-    def initiate(self, zone, api, keytype, algo, bits=None, published=True):
+    def initiate(self, zone, api: PDNSApi, keytype, algo, bits=None, published=True):
         """
         Initiate a pre-publish rollover (:rfc:`RFC 6781 §4.1.1.1 <6781#section-4.1.1.1>`) for the ``keytype`` key of algorithm
     ``algo`` for ``zone``.
@@ -70,7 +70,7 @@ class PrePublishKeyRoll(KeyRoll):
 
         api.bump_soa(zone);
 
-    def _get_highest_ttl(self, zone, api, zoneobject=None):
+    def _get_highest_ttl(self, zone, api: PDNSApi, zoneobject=None):
         if zoneobject is None:
             zoneobject = api.get_zone(zone)
         httl = 0
@@ -82,7 +82,7 @@ class PrePublishKeyRoll(KeyRoll):
     def is_waiting_ds(self):
         return self.started and self.keytype == "ksk" and self.current_step == 1
 
-    def step(self, zone, api, force=False, customttl=0):
+    def step(self, zone, api: PDNSApi, force=False, customttl=0):
         """
         Perform the next step in the keyroll
 
@@ -146,7 +146,7 @@ class PrePublishKeyRoll(KeyRoll):
         else:
             raise Exception("Unknown step number {}".format(self.current_step))
 
-    def validate(self, zone, api):
+    def validate(self, zone, api: PDNSApi):
         """
         Checks if the current keys in the zone matches what we have
 
