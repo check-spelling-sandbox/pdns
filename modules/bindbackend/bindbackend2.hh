@@ -234,7 +234,7 @@ public:
 
   // for autoprimary support
   bool autoPrimariesList(std::vector<AutoPrimary>& primaries) override;
-  bool autoPrimaryBackend(const string& ipAddress, const ZoneName& domain, const vector<DNSResourceRecord>& nsset, string* nameserver, string* account, DNSBackend** backend) override;
+  bool autoprimaryBackend(const string& ipAddress, const ZoneName& domain, const vector<DNSResourceRecord>& nsset, string* nameserver, string* account, DNSBackend** backend) override;
   static std::mutex s_autosecondary_config_lock;
   bool createSecondaryDomain(const string& ipAddress, const ZoneName& domain, const string& nameserver, const string& account) override;
 

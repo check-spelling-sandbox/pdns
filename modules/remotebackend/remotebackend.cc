@@ -688,7 +688,7 @@ void RemoteBackend::setNotified(domainid_t id, uint32_t serial)
   }
 }
 
-bool RemoteBackend::autoPrimaryBackend(const string& ipAddress, const ZoneName& domain, const vector<DNSResourceRecord>& nsset, string* nameserver, string* account, DNSBackend** ddb)
+bool RemoteBackend::autoprimaryBackend(const string& ipAddress, const ZoneName& domain, const vector<DNSResourceRecord>& nsset, string* nameserver, string* account, DNSBackend** ddb)
 {
   Json::array rrset;
 

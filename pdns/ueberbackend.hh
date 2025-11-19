@@ -47,10 +47,10 @@ public:
   UeberBackend(const string& pname = "default");
   ~UeberBackend();
 
-  bool autoPrimaryBackend(const string& ip, const ZoneName& domain, const vector<DNSResourceRecord>& nsset, string* nameserver, string* account, DNSBackend** dnsBackend);
+  bool autoprimaryBackend(const string& ip, const ZoneName& domain, const vector<DNSResourceRecord>& nsset, string* nameserver, string* account, DNSBackend** dnsBackend);
 
-  bool autoPrimaryAdd(const AutoPrimary& primary);
-  bool autoPrimaryRemove(const struct AutoPrimary& primary);
+  bool autoprimaryAdd(const AutoPrimary& primary);
+  bool autoprimaryRemove(const struct AutoPrimary& primary);
   bool autoPrimariesList(std::vector<AutoPrimary>& primaries);
 
   static bool loadmodule(const string& name);

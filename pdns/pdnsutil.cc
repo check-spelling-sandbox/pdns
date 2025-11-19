@@ -2786,7 +2786,7 @@ static int addAutoPrimary(const std::string& IP, const std::string& nameserver, 
 {
   UtilBackend B("default"); //NOLINT(readability-identifier-length)
   const AutoPrimary primary(IP, nameserver, account);
-  if (B.autoPrimaryAdd(primary)) {
+  if (B.autoprimaryAdd(primary)) {
     return EXIT_SUCCESS;
   }
   cerr<<"could not find a backend with autosecondary support"<<endl;
@@ -2797,7 +2797,7 @@ static int removeAutoPrimary(const std::string &IP, const std::string &nameserve
 {
   UtilBackend B("default"); //NOLINT(readability-identifier-length)
   const AutoPrimary primary(IP, nameserver, "");
-  if ( B.autoPrimaryRemove(primary) ){
+  if ( B.autoprimaryRemove(primary) ){
     return EXIT_SUCCESS;
   }
   cerr<<"could not find a backend with autosecondary support"<<endl;

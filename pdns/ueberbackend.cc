@@ -665,20 +665,20 @@ bool UeberBackend::getSOAUncached(const ZoneName& domain, SOAData& soaData)
   return false;
 }
 
-bool UeberBackend::autoPrimaryAdd(const AutoPrimary& primary)
+bool UeberBackend::autoprimaryAdd(const AutoPrimary& primary)
 {
   for (auto& backend : backends) {
-    if (backend->autoPrimaryAdd(primary)) {
+    if (backend->autoprimaryAdd(primary)) {
       return true;
     }
   }
   return false;
 }
 
-bool UeberBackend::autoPrimaryRemove(const AutoPrimary& primary)
+bool UeberBackend::autoprimaryRemove(const AutoPrimary& primary)
 {
   for (auto& backend : backends) {
-    if (backend->autoPrimaryRemove(primary)) {
+    if (backend->autoprimaryRemove(primary)) {
       return true;
     }
   }
@@ -695,14 +695,14 @@ bool UeberBackend::autoPrimariesList(std::vector<AutoPrimary>& primaries)
   return false;
 }
 
-bool UeberBackend::autoPrimaryBackend(const string& ipAddr, const ZoneName& domain, const vector<DNSResourceRecord>& nsset, string* nameserver, string* account, DNSBackend** dnsBackend)
+bool UeberBackend::autoprimaryBackend(const string& ipAddr, const ZoneName& domain, const vector<DNSResourceRecord>& nsset, string* nameserver, string* account, DNSBackend** dnsBackend)
 {
   for (auto& backend : backends) {
     // Do not risk passing variant zones to variant-unaware backends.
     if (domain.hasVariant() && (backend->getCapabilities() & DNSBackend::CAP_VIEWS) == 0) {
       continue;
     }
-    if (backend->autoPrimaryBackend(ipAddr, domain, nsset, nameserver, account, dnsBackend)) {
+    if (backend->autoprimaryBackend(ipAddr, domain, nsset, nameserver, account, dnsBackend)) {
       return true;
     }
   }

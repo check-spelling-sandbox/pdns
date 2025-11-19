@@ -695,7 +695,7 @@ implement the following method:
 
                 class DNSBackend
                 {
-                   virtual bool autoPrimaryBackend(const string &ip, const DNSName &domain, const vector<DNSResourceRecord>&nsset, string *nameserver, string *account, DNSBackend **db)
+                   virtual bool autoprimaryBackend(const string &ip, const DNSName &domain, const vector<DNSResourceRecord>&nsset, string *nameserver, string *account, DNSBackend **db)
                 };
 
 This function gets called with the IP address of the potential

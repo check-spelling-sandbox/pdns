@@ -1617,7 +1617,7 @@ bool GSQLBackend::get_unsafe(DNSResourceRecord& rec, std::vector<std::pair<std::
   return false;
 }
 
-bool GSQLBackend::autoPrimaryAdd(const AutoPrimary& primary)
+bool GSQLBackend::autoprimaryAdd(const AutoPrimary& primary)
 {
   try{
     reconnectIfNeeded();
@@ -1637,7 +1637,7 @@ bool GSQLBackend::autoPrimaryAdd(const AutoPrimary& primary)
   return true;
 }
 
-bool GSQLBackend::autoPrimaryRemove(const AutoPrimary& primary)
+bool GSQLBackend::autoprimaryRemove(const AutoPrimary& primary)
 {
   try{
     reconnectIfNeeded();
@@ -1680,7 +1680,7 @@ bool GSQLBackend::autoPrimariesList(std::vector<AutoPrimary>& primaries)
   return true;
 }
 
-bool GSQLBackend::autoPrimaryBackend(const string& ipAddress, const ZoneName& domain, const vector<DNSResourceRecord>& nsset, string* nameserver, string* account, DNSBackend** ddb)
+bool GSQLBackend::autoprimaryBackend(const string& ipAddress, const ZoneName& domain, const vector<DNSResourceRecord>& nsset, string* nameserver, string* account, DNSBackend** ddb)
 {
   // check if we know the ip/ns couple in the database
   for(const auto & i : nsset) {

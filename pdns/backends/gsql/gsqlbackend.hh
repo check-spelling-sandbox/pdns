@@ -213,10 +213,10 @@ public:
   bool createDomain(const ZoneName& domain, const DomainInfo::DomainKind kind, const vector<ComboAddress>& primaries, const string& account) override;
   bool createSecondaryDomain(const string& ipAddress, const ZoneName& domain, const string& nameserver, const string& account) override;
   bool deleteDomain(const ZoneName &domain) override;
-  bool autoPrimaryAdd(const AutoPrimary& primary) override;
-  bool autoPrimaryRemove(const AutoPrimary& primary) override;
+  bool autoprimaryAdd(const AutoPrimary& primary) override;
+  bool autoprimaryRemove(const AutoPrimary& primary) override;
   bool autoPrimariesList(std::vector<AutoPrimary>& primaries) override;
-  bool autoPrimaryBackend(const string& ipAddress, const ZoneName& domain, const vector<DNSResourceRecord>& nsset, string* nameserver, string* account, DNSBackend** db) override;
+  bool autoprimaryBackend(const string& ipAddress, const ZoneName& domain, const vector<DNSResourceRecord>& nsset, string* nameserver, string* account, DNSBackend** db) override;
   void setStale(domainid_t domain_id) override;
   void setFresh(domainid_t domain_id) override;
   void getUnfreshSecondaryInfos(vector<DomainInfo>* domains) override;

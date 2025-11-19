@@ -1878,7 +1878,7 @@ static void apiServerAutoprimaryDetailDELETE(HttpRequest* req, HttpResponse* res
 {
   UeberBackend backend;
   const AutoPrimary& primary{req->parameters["ip"], req->parameters["nameserver"], ""};
-  if (!backend.autoPrimaryRemove(primary)) {
+  if (!backend.autoprimaryRemove(primary)) {
     throw HttpInternalServerErrorException("Cannot find backend with autoprimary feature");
   }
   resp->body = "";
@@ -1919,7 +1919,7 @@ static void apiServerAutoprimariesPOST(HttpRequest* req, HttpResponse* resp)
   if (primary.ip.empty() or primary.nameserver.empty()) {
     throw ApiException("ip and nameserver fields must be filled");
   }
-  if (!backend.autoPrimaryAdd(primary)) {
+  if (!backend.autoprimaryAdd(primary)) {
     throw HttpInternalServerErrorException("Cannot find backend with autoprimary feature");
   }
   resp->body = "";

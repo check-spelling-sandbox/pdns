@@ -1107,7 +1107,7 @@ int PacketHandler::tryAutoPrimarySynchronous(const DNSPacket& p, const DNSName& 
   }
 
   ZoneName zonename(p.qdomain);
-  if (!B.autoPrimaryBackend(remote.toString(), zonename, nsset, &nameserver, &account, &db)) {
+  if (!B.autoprimaryBackend(remote.toString(), zonename, nsset, &nameserver, &account, &db)) {
     g_log << Logger::Error << "Unable to find backend willing to host " << p.qdomain << " for potential autoprimary " << remote << ". Remote nameservers: " << endl;
     for(const auto& rr: nsset) {
       if(rr.qtype==QType::NS)

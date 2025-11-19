@@ -275,12 +275,12 @@ BOOST_AUTO_TEST_CASE(test_method_getAllDomains)
   BOOST_CHECK_EQUAL(domainInfo.backend, backendUnderTest.get());
 }
 
-BOOST_AUTO_TEST_CASE(test_method_autoPrimaryBackend)
+BOOST_AUTO_TEST_CASE(test_method_autoprimaryBackend)
 {
   DNSResourceRecord resourceRecord;
   std::vector<DNSResourceRecord> nsset;
   DNSBackend* dbd = nullptr;
-  BOOST_TEST_MESSAGE("Testing autoPrimaryBackend method");
+  BOOST_TEST_MESSAGE("Testing autoprimaryBackend method");
 
   resourceRecord.qname = DNSName("example.com.");
   resourceRecord.qtype = QType::NS;
@@ -295,7 +295,7 @@ BOOST_AUTO_TEST_CASE(test_method_autoPrimaryBackend)
   resourceRecord.content = "ns2.example.com.";
   nsset.push_back(resourceRecord);
 
-  BOOST_CHECK(backendUnderTest->autoPrimaryBackend("10.0.0.1", ZoneName("example.com."), nsset, nullptr, nullptr, &dbd));
+  BOOST_CHECK(backendUnderTest->autoprimaryBackend("10.0.0.1", ZoneName("example.com."), nsset, nullptr, nullptr, &dbd));
 
   // let's see what we got
   BOOST_CHECK_EQUAL(dbd, backendUnderTest.get());

@@ -424,13 +424,13 @@ public:
   void setArgPrefix(const string& prefix);
 
   //! Add an entry for a super primary
-  virtual bool autoPrimaryAdd(const struct AutoPrimary& /* primary */)
+  virtual bool autoprimaryAdd(const struct AutoPrimary& /* primary */)
   {
     return false;
   }
 
   //! Remove an entry for a super primary
-  virtual bool autoPrimaryRemove(const struct AutoPrimary& /* primary */)
+  virtual bool autoprimaryRemove(const struct AutoPrimary& /* primary */)
   {
     return false;
   }
@@ -442,7 +442,7 @@ public:
   }
 
   //! determine if ip is an autoprimary or a domain
-  virtual bool autoPrimaryBackend(const string& /* ip */, const ZoneName& /* domain */, const vector<DNSResourceRecord>& /* nsset */, string* /* nameserver */, string* /* account */, DNSBackend** /* db */)
+  virtual bool autoprimaryBackend(const string& /* ip */, const ZoneName& /* domain */, const vector<DNSResourceRecord>& /* nsset */, string* /* nameserver */, string* /* account */, DNSBackend** /* db */)
   {
     return false;
   }
@@ -453,7 +453,7 @@ public:
     return false;
   }
 
-  //! called by PowerDNS to create a secondary record for an autoPrimary
+  //! called by PowerDNS to create a secondary record for an autoprimary
   virtual bool createSecondaryDomain(const string& /* ip */, const ZoneName& /* domain */, const string& /* nameserver */, const string& /* account */)
   {
     return false;

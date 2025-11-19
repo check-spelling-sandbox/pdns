@@ -1442,7 +1442,7 @@ bool Bind2Backend::autoPrimariesList(std::vector<AutoPrimary>& primaries)
   return true;
 }
 
-bool Bind2Backend::autoPrimaryBackend(const string& ipAddress, const ZoneName& /* domain */, const vector<DNSResourceRecord>& /* nsset */, string* /* nameserver */, string* account, DNSBackend** backend)
+bool Bind2Backend::autoprimaryBackend(const string& ipAddress, const ZoneName& /* domain */, const vector<DNSResourceRecord>& /* nsset */, string* /* nameserver */, string* account, DNSBackend** backend)
 {
   // Check whether we have a configfile available.
   if (getArg("autoprimary-config").empty())
