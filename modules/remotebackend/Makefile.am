@@ -145,7 +145,6 @@ libtestremotebackend_la_SOURCES = \
 	../../pdns/ueberbackend.hh ../../pdns/ueberbackend.cc \
 	../../pdns/unix_utility.cc \
 	httpconnector.cc \
-	pipeconnector.cc \
 	remotebackend.hh remotebackend.cc \
 	unixconnector.cc \
 	zmqconnector.cc
