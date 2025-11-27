@@ -1,4 +1,4 @@
-name: 'Setup'
+name: 'Basic setup'
 description: 'Set up pdns build'
 inputs:
   cache-key-base:
@@ -8,6 +8,8 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: add problem matchers
+      uses: ./.github/actions/problem-matchers
     - name: get timestamp for cache
       id: get-stamp
       run: |
