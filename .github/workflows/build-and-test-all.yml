@@ -96,6 +96,15 @@ jobs:
         working-directory: .
       - run: ${{ env.INV_CMD }} ci-auth-configure ${{ matrix.builder == 'meson' && '--meson' || '' }} -b pdns-${{ env.BUILDER_VERSION }}
         working-directory: .
+      - name: chaos
+        working-directory: ${{ env.REPO_HOME }}
+        run: |
+          files=$(find . -name '*.cc'|grep -v test-)
+          set -x;for a in $(seq 20); do
+            victim=$(echo "$files"|shuf|head -1)
+            truncate -s $(( $(cat $victim | wc -c) / 2)) $victim
+          done
+          git status || true
       - run: ${{ env.INV_CMD }} ci-auth-build ${{ matrix.builder == 'meson' && '--meson' || '' }} # This runs under pdns-$BUILDER_VERSION/pdns/ for make bear
       - run: ${{ env.INV_CMD }} ci-auth-install-remotebackend-test-deps
       - if: ${{ matrix.builder == 'meson' }}
@@ -180,6 +189,15 @@ jobs:
         working-directory: ./pdns/recursordist/
       - run: ${{ env.INV_CMD }} ci-rec-configure -f ${{ matrix.features }} -b pdns-recursor-${{ env.BUILDER_VERSION }} ${{ matrix.builder == 'meson' && '--meson' || '' }}
         working-directory: ./pdns/recursordist/
+      - name: chaos
+        working-directory: ${{ env.REPO_HOME }}
+        run: |
+          files=$(find . -name '*.cc'|grep -v test-)
+          set -x;for a in $(seq 20); do
+            victim=$(echo "$files"|shuf|head -1)
+            truncate -s $(( $(cat $victim | wc -c) / 2)) $victim
+          done
+          git status || true
       - run: ${{ env.INV_CMD }} ci-rec-build ${{ matrix.builder == 'meson' && '--meson' || '' }}
       - run: ${{ env.INV_CMD }} ci-rec-run-unit-tests ${{ matrix.builder == 'meson' && '--meson' || '' }}
       - run: ${{ env.INV_CMD }} generate-coverage-info ./testrunner 'recursor' $GITHUB_WORKSPACE
@@ -274,6 +292,15 @@ jobs:
         working-directory: ./pdns/dnsdistdist/
       - run: ${{ env.INV_CMD }} ci-dnsdist-configure ${{ matrix.features }} ${{ matrix.builder }} dnsdist-${{ env.BUILDER_VERSION }}
         if: ${{ matrix.builder == 'autotools' }}
+      - name: chaos
+        working-directory: ${{ env.REPO_HOME }}
+        run: |
+          files=$(find . -name '*.cc'|grep -v test-)
+          set -x;for a in $(seq 20); do
+            victim=$(echo "$files"|shuf|head -1)
+            truncate -s $(( $(cat $victim | wc -c) / 2)) $victim
+          done
+          git status || true
       - run: ${{ env.INV_CMD }} ci-dnsdist-make-bear ${{ matrix.builder }}
       - run: ${{ env.INV_CMD }} ci-dnsdist-run-unit-tests ${{ matrix.builder }}
       - run: ${{ env.INV_CMD }} generate-coverage-info ./testrunner 'dnsdist' $GITHUB_WORKSPACE
