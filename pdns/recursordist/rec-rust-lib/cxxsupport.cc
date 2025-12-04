@@ -1302,14 +1302,14 @@ void fromRustToLuaConfig(const rust::Vec<pdns::rust::settings::rec::ProxyMapping
   for (const auto& pmap : pmaps) {
     Netmask subnet = Netmask(std::string(pmap.subnet));
     ComboAddress address(std::string(pmap.address));
-    boost::optional<SuffixMatchNode> smn;
+    std::optional<SuffixMatchNode> smn;
     if (!pmap.domains.empty()) {
-      smn = boost::make_optional(SuffixMatchNode{});
+      smn = std::make_optional(SuffixMatchNode{});
       for (const auto& dom : pmap.domains) {
         smn->add(DNSName(std::string(dom)));
       }
     }
-    proxyMapping.insert_or_assign(subnet, {address, smn});
+    proxyMapping.insert_or_assign(subnet, {std::move(address), std::move(smn)});
   }
 }
 

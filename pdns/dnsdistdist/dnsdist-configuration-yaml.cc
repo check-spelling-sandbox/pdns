@@ -50,7 +50,6 @@
 #include "dnsdist-configuration-yaml-internal.hh"
 
 #include <variant>
-#include <boost/optional.hpp>
 #include <boost/uuid/string_generator.hpp>
 #include <boost/variant.hpp>
 
@@ -62,7 +61,7 @@ namespace dnsdist::configuration::yaml
 
 using XSKMap = std::vector<std::shared_ptr<XskSocket>>;
 
-using RegisteredTypes = std::variant<std::shared_ptr<DNSDistPacketCache>, std::shared_ptr<dnsdist::rust::settings::DNSSelector>, std::shared_ptr<dnsdist::rust::settings::DNSActionWrapper>, std::shared_ptr<dnsdist::rust::settings::DNSResponseActionWrapper>, std::shared_ptr<NetmaskGroup>, std::shared_ptr<KeyValueStore>, std::shared_ptr<KeyValueLookupKey>, std::shared_ptr<RemoteLoggerInterface>, std::shared_ptr<ServerPolicy>, std::shared_ptr<XSKMap>>;
+using RegisteredTypes = std::variant<std::shared_ptr<DNSDistPacketCache>, std::shared_ptr<dnsdist::rust::settings::DNSSelector>, std::shared_ptr<dnsdist::rust::settings::DNSActionWrapper>, std::shared_ptr<dnsdist::rust::settings::DNSResponseActionWrapper>, std::shared_ptr<NetmaskGroup>, std::shared_ptr<KeyValueStore>, std::shared_ptr<KeyValueLookupKey>, std::shared_ptr<RemoteLoggerInterface>, std::shared_ptr<ServerPolicy>, std::shared_ptr<TimedIPSetRule>, std::shared_ptr<XSKMap>>;
 static LockGuarded<std::unordered_map<std::string, RegisteredTypes>> s_registeredTypesMap;
 static std::atomic<bool> s_inConfigCheckMode;
 static std::atomic<bool> s_inClientMode;
@@ -124,7 +123,7 @@ template <class T>
 static bool getOptionalLuaFunction(T& destination, const ::rust::string& functionName)
 {
   auto lua = g_lua.lock();
-  auto function = lua->readVariable<boost::optional<T>>(std::string(functionName));
+  auto function = lua->readVariable<std::optional<T>>(std::string(functionName));
   if (!function) {
     return false;
   }
@@ -374,7 +373,7 @@ static bool handleTLSConfiguration(const dnsdist::rust::settings::BindConfigurat
     if (!bind.doh.responses_map.empty()) {
       auto newMap = std::make_shared<std::vector<std::shared_ptr<DOHResponseMapEntry>>>();
       for (const auto& responsesMap : bind.doh.responses_map) {
-        boost::optional<std::unordered_map<std::string, std::string>> headers;
+        std::optional<std::unordered_map<std::string, std::string>> headers;
         if (!responsesMap.headers.empty()) {
           headers = std::unordered_map<std::string, std::string>();
           for (const auto& header : responsesMap.headers) {
@@ -1266,13 +1265,13 @@ bool loadConfigurationFromFile(const std::string& fileName, [[maybe_unused]] boo
 void addLuaBindingsForYAMLObjects([[maybe_unused]] LuaContext& luaCtx)
 {
 #if defined(HAVE_YAML_CONFIGURATION)
-  using ReturnValue = boost::optional<boost::variant<std::shared_ptr<DNSDistPacketCache>, std::shared_ptr<DNSRule>, std::shared_ptr<DNSAction>, std::shared_ptr<DNSResponseAction>, std::shared_ptr<NetmaskGroup>, std::shared_ptr<KeyValueStore>, std::shared_ptr<KeyValueLookupKey>, std::shared_ptr<RemoteLoggerInterface>, std::shared_ptr<ServerPolicy>, std::shared_ptr<XSKMap>>>;
+  using ReturnValue = std::optional<boost::variant<std::shared_ptr<DNSDistPacketCache>, std::shared_ptr<DNSRule>, std::shared_ptr<DNSAction>, std::shared_ptr<DNSResponseAction>, std::shared_ptr<NetmaskGroup>, std::shared_ptr<KeyValueStore>, std::shared_ptr<KeyValueLookupKey>, std::shared_ptr<RemoteLoggerInterface>, std::shared_ptr<ServerPolicy>, std::shared_ptr<TimedIPSetRule>, std::shared_ptr<XSKMap>>>;
 
   luaCtx.writeFunction("getObjectFromYAMLConfiguration", [](const std::string& name) -> ReturnValue {
     auto map = s_registeredTypesMap.lock();
     auto item = map->find(name);
     if (item == map->end()) {
-      return boost::none;
+      return std::nullopt;
     }
     if (auto* ptr = std::get_if<std::shared_ptr<DNSDistPacketCache>>(&item->second)) {
       return ReturnValue(*ptr);
@@ -1301,11 +1300,14 @@ void addLuaBindingsForYAMLObjects([[maybe_unused]] LuaContext& luaCtx)
     if (auto* ptr = std::get_if<std::shared_ptr<ServerPolicy>>(&item->second)) {
       return ReturnValue(*ptr);
     }
+    if (auto* ptr = std::get_if<std::shared_ptr<TimedIPSetRule>>(&item->second)) {
+      return ReturnValue(*ptr);
+    }
     if (auto* ptr = std::get_if<std::shared_ptr<XSKMap>>(&item->second)) {
       return ReturnValue(*ptr);
     }
 
-    return boost::none;
+    return std::nullopt;
   });
 #endif /* HAVE_YAML_CONFIGURATION */
 }
@@ -1637,6 +1639,16 @@ std::shared_ptr<DNSSelector> getKeyValueStoreRangeLookupSelector([[maybe_unused]
 #endif
 }
 
+std::shared_ptr<DNSSelector> getTimedIPSetSelector(const TimedIPSetSelectorConfiguration& config)
+{
+  auto obj = dnsdist::configuration::yaml::getRegisteredTypeByName<TimedIPSetRule>(std::string(config.set_name));
+  if (!obj) {
+    throw std::runtime_error("Uanble to find a timed IP set named '" + std::string(config.set_name));
+  }
+  auto selector = std::dynamic_pointer_cast<DNSRule>(obj);
+  return newDNSSelector(std::move(selector), config.name);
+}
+
 std::shared_ptr<DNSActionWrapper> getDnstapLogAction([[maybe_unused]] const DnstapLogActionConfiguration& config)
 {
 #if defined(DISABLE_PROTOBUF) || !defined(HAVE_FSTRM)
@@ -1646,7 +1658,7 @@ std::shared_ptr<DNSActionWrapper> getDnstapLogAction([[maybe_unused]] const Dnst
   if (!logger && !(dnsdist::configuration::yaml::s_inClientMode || dnsdist::configuration::yaml::s_inConfigCheckMode)) {
     throw std::runtime_error("Unable to find the dnstap logger named '" + std::string(config.logger_name) + "'");
   }
-  boost::optional<dnsdist::actions::DnstapAlterFunction> alterFuncHolder;
+  std::optional<dnsdist::actions::DnstapAlterFunction> alterFuncHolder;
   dnsdist::actions::DnstapAlterFunction alterFunc;
   if (dnsdist::configuration::yaml::getLuaFunctionFromConfiguration(alterFunc, config.alter_function_name, config.alter_function_code, config.alter_function_file, "dnstap log action")) {
     alterFuncHolder = std::move(alterFunc);
@@ -1665,7 +1677,7 @@ std::shared_ptr<DNSResponseActionWrapper> getDnstapLogResponseAction([[maybe_unu
   if (!logger && !(dnsdist::configuration::yaml::s_inClientMode || dnsdist::configuration::yaml::s_inConfigCheckMode)) {
     throw std::runtime_error("Unable to find the dnstap logger named '" + std::string(config.logger_name) + "'");
   }
-  boost::optional<dnsdist::actions::DnstapAlterResponseFunction> alterFuncHolder;
+  std::optional<dnsdist::actions::DnstapAlterResponseFunction> alterFuncHolder;
   dnsdist::actions::DnstapAlterResponseFunction alterFunc;
   if (dnsdist::configuration::yaml::getLuaFunctionFromConfiguration(alterFunc, config.alter_function_name, config.alter_function_code, config.alter_function_file, "dnstap log response action")) {
     alterFuncHolder = std::move(alterFunc);
@@ -1867,6 +1879,17 @@ void registerNMGObjects(const ::rust::Vec<NetmaskGroupConfiguration>& nmgs)
     }
     if (!registered) {
       dnsdist::configuration::yaml::registerType<NetmaskGroup>(nmg, netmaskGroup.name);
+    }
+  }
+}
+
+void registerTimedIPSetObjects(const ::rust::Vec<TimedIpSetConfiguration>& sets)
+{
+  for (const auto& timedIPSet : sets) {
+    auto obj = dnsdist::configuration::yaml::getRegisteredTypeByName<TimedIPSetRule>(std::string(timedIPSet.name));
+    if (!obj) {
+      obj = std::make_shared<TimedIPSetRule>();
+      dnsdist::configuration::yaml::registerType<TimedIPSetRule>(obj, timedIPSet.name);
     }
   }
 }
