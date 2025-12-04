@@ -1003,7 +1003,6 @@ pch
 pdns
 pdnsbackend
 pdnscontrol
-pdnskeyroller
 pdnsldap
 pdnslog
 pdnsrandom
@@ -1067,7 +1066,6 @@ Predota
 prefixpowerdns
 preoutquery
 Preproc
-prepublishkeyroll
 prequery
 prerpz
 presignedness
