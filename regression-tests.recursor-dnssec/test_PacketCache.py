@@ -167,10 +167,10 @@ f 3600 IN CNAME f            ; CNAME loop: dirty trick to get a ServFail in an a
                           'dump-cache', '-']
         try:
             ret = subprocess.check_output(rec_controlCmd, stderr=subprocess.STDOUT)
-            self.assertTrue((b"a.example. 10 A  ; tag 0 udp\n" in ret) or (b"a.example. 9 A  ; tag 0 udp\n" in ret))
-            self.assertTrue((b"nxdomain.example. 8 A  ; tag 0 udp\n" in ret) or (b"nxdomain.example. 7 A  ; tag 0 udp\n" in ret))
-            self.assertTrue((b"a.example. 8 AAAA  ; tag 0 udp\n" in ret) or (b"a.example. 7 AAAA  ; tag 0 udp\n" in ret))
-            self.assertTrue((b"f.example. 5 A  ; tag 0 udp\n" in ret) or (b"f.example. 4 A  ; tag 0 udp\n" in ret))
+            self.assertIn((b"a.example. 10 A  ; tag 0 udp\n" in ret) or (b"a.example. 9 A  ; tag 0 udp\n", ret))
+            self.assertIn((b"nxdomain.example. 8 A  ; tag 0 udp\n" in ret) or (b"nxdomain.example. 7 A  ; tag 0 udp\n", ret))
+            self.assertIn((b"a.example. 8 AAAA  ; tag 0 udp\n" in ret) or (b"a.example. 7 AAAA  ; tag 0 udp\n", ret))
+            self.assertIn((b"f.example. 5 A  ; tag 0 udp\n" in ret) or (b"f.example. 4 A  ; tag 0 udp\n", ret))
 
         except subprocess.CalledProcessError as e:
             print(e.output)

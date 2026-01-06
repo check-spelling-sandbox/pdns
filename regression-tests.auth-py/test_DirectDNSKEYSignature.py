@@ -52,11 +52,11 @@ example.org.                 3600 IN RRSIG   DNSKEY 13 2 3600 20250118211239 202
 
         # Validate DNSKEY record
         dnskey_found = any(rrset.rdtype == dns.rdatatype.DNSKEY for rrset in res.answer)
-        self.assertTrue(dnskey_found, "DNSKEY record not found in the answer section")
+        self.assertIn(dnskey_found, "DNSKEY record not found, the answer section")
 
         # Validate RRSIG record for DNSKEY
         rrsig_found = any(rrset.rdtype == dns.rdatatype.RRSIG and rrset.covers == dns.rdatatype.DNSKEY and rrset[0].key_tag == 22273 for rrset in res.answer)
-        self.assertTrue(rrsig_found, "RRSIG for DNSKEY not found in the answer section")
+        self.assertIn(rrsig_found, "RRSIG for DNSKEY not found, the answer section")
 
     def testDNSKEYQueryWithoutDNSSEC(self):
         """Test to ensure no RRSIG records are returned without the DNSSEC flag"""
@@ -68,7 +68,7 @@ example.org.                 3600 IN RRSIG   DNSKEY 13 2 3600 20250118211239 202
 
         # Ensure DNSKEY is present but no RRSIG
         dnskey_found = any(rrset.rdtype == dns.rdatatype.DNSKEY for rrset in res.answer)
-        self.assertTrue(dnskey_found, "DNSKEY record not found in the answer section")
+        self.assertIn(dnskey_found, "DNSKEY record not found, the answer section")
 
         rrsig_found = any(rrset.rdtype == dns.rdatatype.RRSIG for rrset in res.answer)
         self.assertFalse(rrsig_found, "RRSIG records found unexpectedly without DNSSEC flag")
