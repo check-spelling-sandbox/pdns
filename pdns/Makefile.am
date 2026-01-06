@@ -57,11 +57,13 @@ EXTRA_DIST = \
 	incfiles \
 	inflighter.cc \
 	ixfrdist.example.yml \
+	ixfrdist.service.meson.in \
 	ixfrdist.service.in \
 	lua-record.cc \
 	minicurl.cc \
 	minicurl.hh \
 	named.conf.parsertest \
+	pdns.service.meson.in \
 	pdns.service.in \
 	requirements.txt \
 	standalone_fuzz_target_runner.cc
@@ -608,6 +610,7 @@ calidns_SOURCES = \
 	logger.cc \
 	misc.cc misc.hh \
 	nsecrecords.cc \
+	proxy-protocol.cc proxy-protocol.hh \
 	qtype.cc \
 	rcpgenerator.cc rcpgenerator.hh \
 	sillyrecords.cc \

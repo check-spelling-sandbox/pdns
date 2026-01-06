@@ -412,7 +412,7 @@ static bool catalogProcess(const XFRContext& ctx, vector<DNSResourceRecord>& rrs
           if (content.length() >= 2 && content.at(0) == '\"' && content.at(content.length() - 1) == '\"') { // TXT pain
             content = content.substr(1, content.length() - 2);
           }
-          ci.d_group.insert(content);
+          ci.d_group.insert(std::move(content));
         }
       }
     }
@@ -556,7 +556,7 @@ static bool processRecordForZS(const DNSName& domain, bool& firstNSEC3, DNSResou
     ctx.optOutFlag = static_cast<bool>(ns3rc.d_flags & 1);
     if (ns3rc.isSet(QType::NS) && !(rr.qname == domain)) {
       DNSName hashPart = rr.qname.makeRelative(domain);
-      ctx.secured.insert(hashPart);
+      ctx.secured.insert(std::move(hashPart));
     }
     return false;
   }
@@ -1171,7 +1171,7 @@ void CommunicatorClass::secondaryRefresh(PacketHandler* P) // NOLINT(readability
     TSIGRecordContent trc;
     DNSName tsigkeyname;
     dp.getTSIGDetails(&trc, &tsigkeyname);
-    P->tryAutoPrimarySynchronous(dp, tsigkeyname); // FIXME could use some error logging
+    P->tryAutoPrimarySynchronous(dp, tsigkeyname);
   }
   if (rdomains.empty()) { // if we have priority domains, check them first
     B->getUnfreshSecondaryInfos(&rdomains);

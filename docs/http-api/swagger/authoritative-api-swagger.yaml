@@ -281,8 +281,8 @@ paths:
 
   '/servers/{server_id}/zones/{zone_id}/notify':
     put:
-      summary: Send a DNS NOTIFY to all slaves.
-      description: 'Fails when zone kind is not Master or Slave, or master and slave are disabled in the configuration. Only works for Slave if renotify is on. Clients MUST NOT send a body.'
+      summary: Send a DNS NOTIFY to all secondaries.
+      description: 'Fails when zone kind is not Master or Slave, or primary and secondary are disabled in the configuration. Only works for Slave if renotify is on. Clients MUST NOT send a body.'
       operationId: notifyZone
       tags:
         - zones
@@ -304,8 +304,8 @@ paths:
 
   '/servers/{server_id}/zones/{zone_id}/axfr-retrieve':
     put:
-      summary: Retrieve slave zone from its master.
-      description: 'Fails when zone kind is not Slave, or slave is disabled in the configuration. Clients MUST NOT send a body.'
+      summary: Retrieve secondary zone from its primary.
+      description: 'Fails when zone kind is not Slave, or secondary is disabled in the configuration. Clients MUST NOT send a body.'
       operationId: axfrRetrieveZone
       tags:
         - zones
@@ -352,7 +352,7 @@ paths:
   '/servers/{server_id}/zones/{zone_id}/rectify':
     put:
       summary: 'Rectify the zone data.'
-      description: 'This does not take into account the API-RECTIFY metadata. Fails on slave zones and zones that do not have DNSSEC.'
+      description: 'This does not take into account the API-RECTIFY metadata. Fails on secondary zones.'
       operationId: rectifyZone
       tags:
         - zones
@@ -1188,7 +1188,7 @@ definitions:
         type: array
         items:
           type: string
-        description: ' List of IP addresses configured as a master for this zone (“Slave” type zones only)'
+        description: ' List of IP addresses configured as a primary for this zone (“Slave” type zones only)'
       dnssec:
         type: boolean
         description: 'Whether or not this zone is DNSSEC signed (inferred from presigned being true XOR presence of at least one cryptokey with active being true)'
@@ -1223,19 +1223,19 @@ definitions:
         type: array
         items:
           type: string
-        description: 'MAY be sent in client bodies during creation, and MUST NOT be sent by the server. Simple list of strings of nameserver names, including the trailing dot. Not required for slave zones.'
+        description: 'MAY be sent in client bodies during creation, and MUST NOT be sent by the server. Simple list of strings of nameserver names, including the trailing dot. Not required for secondary zones.'
       master_tsig_key_ids:
         type: array
         items:
           type: string
-        description: 'The id of the TSIG keys used for master operation in this zone'
+        description: 'The id of the TSIG keys used for primary operation in this zone'
         externalDocs:
           url: 'https://doc.powerdns.com/authoritative/tsig.html#provisioning-outbound-axfr-access'
       slave_tsig_key_ids:
         type: array
         items:
           type: string
-        description: 'The id of the TSIG keys used for slave operation in this zone'
+        description: 'The id of the TSIG keys used for secondary operation in this zone'
         externalDocs:
           url: 'https://doc.powerdns.com/authoritative/tsig.html#provisioning-signed-notification-and-axfr-requests'
 
@@ -1265,7 +1265,7 @@ definitions:
         description: 'DNS TTL of the records, in seconds. MUST NOT be included when changetype is set to “DELETE”.'
       changetype:
         type: string
-        description: 'MUST be added when updating the RRSet. Must be one of DELETE, EXTEND, PRUNE or REPLACE. With DELETE, all existing RRs matching name and type will be deleted, including all comments. With EXTEND, only a single record shall be present, and it will be added to the RRSet if not already present. With PRUNE, only a single record shall be present, and it will be deleted from the RRSet if present. With REPLACE, when records is present, all existing RRs matching name and type will be deleted, and then new records given in records will be created. If no records are left, any existing comments will be deleted as well. When comments is present, all existing comments for the RRs matching name and type will be deleted, and then new comments given in comments will be created.'
+        description: 'MUST be added when updating the RRSet. Must be one of DELETE, EXTEND, PRUNE or REPLACE. EXTEND and PRUNE are available since versions 4.9.12 and 5.0.2. With DELETE, all existing RRs matching name and type will be deleted, including all comments. With EXTEND, only a single record shall be present, and it will be added to the RRSet if not already present. With PRUNE, only a single record shall be present, and it will be deleted from the RRSet if present. With REPLACE, when records is present, all existing RRs matching name and type will be deleted, and then new records given in records will be created. If no records are left, any existing comments will be deleted as well. When comments is present, all existing comments for the RRs matching name and type will be deleted, and then new comments given in comments will be created.'
       records:
         type: array
         description: 'All records in this RRSet. When updating Records, this is the list of new records (replacing the old ones). Must be empty when changetype is set to DELETE, and must contain only one element when changetype is set to EXTEND or PRUNE. An empty list results in deletion of all records (and comments).'
