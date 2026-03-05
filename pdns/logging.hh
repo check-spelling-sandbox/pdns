@@ -24,7 +24,7 @@
 
 #include "config.h"
 
-#ifdef RECURSOR
+#if defined(RECURSOR) || defined(DNSDIST)
 
 #include <map>
 #include <memory>
@@ -154,13 +154,30 @@ struct IterLoggable : public Logr::Loggable
       else {
         first = false;
       }
-      oss << *i;
+      if constexpr (std::is_same_v<typename T::value_type, std::string>) {
+        oss << *i;
+      }
+      else if constexpr (is_toStructuredLogString_available<typename T::value_type>::value) {
+        oss << i->toStructuredLogString();
+      }
+      else if constexpr (is_toLogString_available<typename T::value_type>::value) {
+        oss << i->toLogString();
+      }
+      else if constexpr (is_toString_available<typename T::value_type>::value) {
+        oss << i->toString();
+      }
+      else if constexpr (is_to_string_available<typename T::value_type>::value) {
+        oss << std::to_string(*i);
+      }
+      else {
+        oss << *i;
+      }
     }
     return oss.str();
   }
 };
 
-typedef void (*EntryLogger)(const Entry&);
+using EntryLogger = void (*)(const Entry&);
 
 class Logger : public Logr::Logger, public std::enable_shared_from_this<const Logger>
 {
@@ -205,6 +222,7 @@ private:
 };
 }
 
+#if !defined(DNSDIST)
 extern std::shared_ptr<Logging::Logger> g_slog;
 
 // Prefer structured logging? Since Recursor 5.1.0, we always do. We keep a const, to allow for
@@ -224,10 +242,40 @@ constexpr bool g_slogStructured = true;
     slogCall;                    \
   } while (0)
 
-#else // No structured logging (e.g. auth)
+// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
+#define VERBOSESLOG(nonStructured, structured)
+
+#else // DNSdist
+// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
+#define SLOG(nonStructured, structured)            \
+  do {                                             \
+    if (dnsdist::logging::doStructuredLogging()) { \
+      structured;                                  \
+    }                                              \
+    else {                                         \
+      nonStructured;                               \
+    }                                              \
+  } while (0)
+
+// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
+#define VERBOSESLOG(nonStructured, structured)  \
+  do {                                          \
+    if (dnsdist::logging::doVerboseLogging()) { \
+      SLOG(nonStructured, structured);          \
+    }                                           \
+  } while (0)
+
+#endif /* ! DNSDIST */
+
+#else // !RECURSOR && !DNSDIST
+
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define SLOG(oldStyle, slogCall) \
   do {                           \
     oldStyle;                    \
   } while (0)
-#endif // RECURSOR
+
+// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
+#define VERBOSESLOG(nonStructured, structured)
+
+#endif // !RECURSOR && !DNSDIST

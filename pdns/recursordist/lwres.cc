@@ -19,42 +19,19 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
-#ifdef HAVE_CONFIG_H
 #include "config.h"
-#endif
-#include "utility.hh"
+
 #include "lwres.hh"
-#include <iostream>
-#include "dnsrecords.hh"
-#include <cerrno>
-#include "misc.hh"
-#include <algorithm>
-#include <sstream>
-#include <cstring>
-#include <string>
-#include <vector>
-#include "dns.hh"
-#include "qtype.hh"
-#include "pdnsexception.hh"
 #include "arguments.hh"
-#include "sstuff.hh"
-#include "syncres.hh"
-#include "dnswriter.hh"
-#include "dnsparser.hh"
-#include "logger.hh"
-#include "dns_random.hh"
-#include <boost/scoped_array.hpp>
-#include <boost/algorithm/string.hpp>
-#include "validate-recursor.hh"
-#include "ednssubnet.hh"
 #include "query-local-address.hh"
-#include "tcpiohandler.hh"
-#include "ednsoptions.hh"
 #include "ednspadding.hh"
 #include "rec-protozero.hh"
-#include "uuid-utils.hh"
+#include "logging.hh"
 #include "rec-tcpout.hh"
 #include "rec-cookiestore.hh"
+#include "syncres.hh"
+#include "resolve-context.hh"
+#include "remote_logger.hh"
 
 static bool g_cookies = false;
 
@@ -704,7 +681,7 @@ static LWResult::Result asyncresolve(const OptLog& log, const ComboAddress& addr
   if (!doTCP) {
     int queryfd;
     try {
-      ret = asendto(vpacket.data(), vpacket.size(), 0, address, addressToBindTo, qid, domain, type, subnetOpts, &queryfd, *now);
+      ret = asendto(vpacket.data(), vpacket.size(), address, addressToBindTo, qid, domain, type, subnetOpts, &queryfd, *now);
     }
     catch (const PDNSException& e) {
       if (addressToBindTo) {
@@ -737,7 +714,7 @@ static LWResult::Result asyncresolve(const OptLog& log, const ComboAddress& addr
     }
 
     // sleep until we see an answer to this, interface to mtasker
-    ret = arecvfrom(buf, 0, address, len, qid, domain, type, queryfd, subnetOpts, *now);
+    ret = arecvfrom(buf, address, len, qid, domain, type, queryfd, subnetOpts, *now);
   }
   else {
     bool isNew{};
@@ -789,6 +766,8 @@ static LWResult::Result asyncresolve(const OptLog& log, const ComboAddress& addr
     return ret;
   }
 
+  lwr->d_bytesReceived = len;
+
   if (*chained) {
     auto msec = lwr->d_usec / 1000;
     if (msec > g_networkTimeoutMsec * 2 / 3) {
@@ -815,6 +794,15 @@ static LWResult::Result asyncresolve(const OptLog& log, const ComboAddress& addr
   try {
     lwr->d_tcbit = 0;
     MOADNSParser mdp(false, reinterpret_cast<const char*>(buf.data()), buf.size());
+
+    // RFC 1035 Section 4.1.1: QR must be 1 for responses
+    if (!mdp.d_header.qr) {
+      lwr->d_rcode = RCode::ServFail;
+      lwr->d_validpacket = false;
+      t_Counters.at(rec::Counter::serverParseError)++;
+      return LWResult::Result::PermanentError;
+    }
+
     lwr->d_aabit = mdp.d_header.aa;
     lwr->d_tcbit = mdp.d_header.tc;
     lwr->d_rcode = mdp.d_header.rcode;
@@ -835,7 +823,10 @@ static LWResult::Result asyncresolve(const OptLog& log, const ComboAddress& addr
                         "onwire", Logging::Loggable(mdp.d_qname));
       }
       // unexpected count has already been done @ pdns_recursor.cc
-      goto out;
+      if (!lwr->d_rcode) {
+        lwr->d_rcode = RCode::ServFail;
+      }
+      return LWResult::Result::PermanentError;
     }
 
     lwr->d_records.reserve(mdp.d_answers.size());
@@ -945,7 +936,6 @@ static LWResult::Result asyncresolve(const OptLog& log, const ComboAddress& addr
 
   t_Counters.at(rec::Counter::serverParseError)++;
 
-out:
   if (!lwr->d_rcode) {
     lwr->d_rcode = RCode::ServFail;
   }

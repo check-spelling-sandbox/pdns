@@ -504,6 +504,9 @@ An example of an ``proxymappings`` entry, which is a sequence of `ProxyMapping`_
            - example.com
            - example.net
 
+Description of YAML syntax for additional structured types
+----------------------------------------------------------
+             
 ForwardingCatalogZone
 ^^^^^^^^^^^^^^^^^^^^^
 As of version 5.2.0, a forwarding catalog zone entry is defined as:
@@ -572,9 +575,9 @@ As of version 5.3.0, an incoming web server configuration is defined as
 
    addresses: [] Sequence of SocketAddress
    tls:
-     certificates: file containing full certificate chain in PEM format
+     certificates: file containing full certificate chain in PEM format or (since version 5.5.0) a PKCS12 file
      key: file containing private key in PEM format
-
+     password: the password used to decrypt a PKCS12 file (since version 5.5.0)
 
 A :ref:`setting-yaml-webservice.listen` section contains a sequence of `IncomingWSConfig`_, for example:
 
@@ -590,7 +593,17 @@ A :ref:`setting-yaml-webservice.listen` section contains a sequence of `Incoming
 
 If no ``tls`` section is present, plaintext ``http`` connections are accepted on the listed addresses.
 
-If a ``tls`` section is present, clients are required to use ``https`` to contact any of the address-port combinations listen in addresses. At the moment it is not possible to list additional properties of the TLS listener and encrypted key files cannot be used.
+If a ``tls`` section is present, clients are required to use ``https`` to contact any of the address-port combinations listen in addresses.
+
+If both the ``certificate`` and the ``key`` fields are set, the values specify unencrypted PEM files.
+The ``password`` field is ignored in that case.
+
+If the ``key`` field is not set but the ``certificate`` and ``password`` fields are set, the listed file is assumed to be an encrypted PKCS12 (also known as pfx) file containing both a key and the certificate chain.
+The ``pkcs12`` feature is only available starting with version 5.5.0 and if the Rust build environment used is version 1.88 or higher.
+
+At the moment it is not possible to list additional properties of the TLS listener.
+
+.. _outgoing-tls-configuration:
 
 OutgoingTLSConfiguration
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -610,6 +623,15 @@ As of version 5.4.0, an outgoing TLS (DoT) configuration is defined as
    subject_address: The subject IP address passed in the SNI value of the TLS handshake, and against which to validate the certificate presented by the backend. Default is to use the remote IP address if no nameserver name is available.
    ciphers: The TLS ciphers to use. The exact format depends on the provider used. When the OpenSSL provider is used, ciphers for TLS 1.3 must be specified via ciphers_tls_13.
    ciphers_tls_13: The ciphers to use for TLS 1.3, when the OpenSSL provider is used. When the GnuTLS provider is used, ciphers applies regardless of the TLS protocol and this setting is not used.
+   # Version 5.5.0 adds the fields below and apply to the OpenSSL provider only
+   client_certificate: The pathname of a file containing a TLS client certificate (PEM or PKCS12 format).
+   client_certificate_key: The pathname of a file containing the key corresponding to the client certificate (PEM format).
+   client_certificate_password: The password to unlock the PKCS12 file.
+
+If both the ``client_certificate`` and the ``client_certificate_key`` fields are set, the values specify unencrypted PEM files.
+The ``client_certificate_password`` field is ignored in that case.
+
+If the ``client_certificate_key`` field is not set but the ``client_certificate`` and ``client_certificate_password`` fields are set, the listed file is assumed to be an encrypted PKCS12 (also known as pfx) file containing both a key and the certificate chain.
 
 A :ref:`setting-yaml-outgoing.tls_configurations` section contains a sequence of `OutgoingTLSConfiguration`_, for example:
 

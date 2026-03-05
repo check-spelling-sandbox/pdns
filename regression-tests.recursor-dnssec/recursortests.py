@@ -16,6 +16,7 @@ import requests
 import threading
 import ssl
 import copy
+import pytest
 from twisted.internet import reactor
 from proxyprotocol import ProxyProtocol
 
@@ -35,6 +36,7 @@ def have_ipv6():
         return False
 
 
+@pytest.mark.usefixtures("run_auths")
 class RecursorTest(AssertEqualDNSMessageMixin, unittest.TestCase):
     """
     Setup all recursors and auths required for the tests
@@ -436,7 +438,7 @@ PrivateKey: Ep9uo6+wwjb4MaOmqq7LHav2FLrjotVOeZg8JT1Qk04=
         '18': {'threads': 1,
                'zones': ['example']}
     }
-    _auth_zones = {}
+    _auth_zones = _default_auth_zones
     # Other IPs used:
     #  2: test_Interop.py
     #  3-7: free?
@@ -488,7 +490,6 @@ options {
     @classmethod
     def generateAuthConfig(cls, confdir, threads, extra=''):
         bind_dnssec_db = os.path.join(confdir, 'bind-dnssec.sqlite3')
-
         with open(os.path.join(confdir, 'pdns.conf'), 'w') as pdnsconf:
             pdnsconf.write("""
 module-dir={moduledir}
@@ -517,7 +518,6 @@ distributor-threads={threads}
                        'create-bind-db',
                        bind_dnssec_db]
 
-        print(' '.join(pdnsutilCmd))
         try:
             subprocess.check_output(pdnsutilCmd, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
@@ -559,7 +559,6 @@ distributor-threads={threads}
                 authconfdir = os.path.join(confdir, 'auth-%s' % auth_suffix)
 
                 os.mkdir(authconfdir)
-
                 cls.generateAuthConfig(authconfdir, threads)
                 cls.generateAuthNamedConf(authconfdir, zones)
 
@@ -571,6 +570,17 @@ distributor-threads={threads}
                         cls.secureZone(authconfdir, zone, cls._zone_keys.get(zone))
 
     @classmethod
+    def setUpClassSpecialAuths(cls):
+        # tear down existing auths, and start with our own special config
+        confdir = os.path.join('configs', 'auths')
+        cls.tearDownAuth()
+        #confdir = os.path.join('configs', cls._confdir)
+        print("Specialized auth setup" + confdir)
+        cls.createConfigDir(confdir)
+        cls.generateAllAuthConfig(confdir)
+        cls.startAllAuth(confdir)
+
+    @classmethod
     def startAllAuth(cls, confdir):
         if cls._auth_zones:
             for auth_suffix, _ in cls._auth_zones.items():
@@ -580,7 +590,7 @@ distributor-threads={threads}
 
     @classmethod
     def waitForTCPSocket(cls, ipaddress, port):
-        for try_number in range(0, 100):
+        for try_number in range(0, 1000):
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(1.0)
@@ -590,7 +600,7 @@ distributor-threads={threads}
             except Exception as err:
                 if err.errno != errno.ECONNREFUSED:
                     print(f'Error occurred: {try_number} {err}', file=sys.stderr)
-            time.sleep(0.1)
+            time.sleep(0.01)
 
     @classmethod
     def startAuth(cls, confdir, ipaddress):
@@ -611,13 +621,16 @@ distributor-threads={threads}
                                                      env=cls._auth_env)
 
         cls.waitForTCPSocket(ipaddress, 53)
+        cls.checkAuth(cls._auths[ipaddress], authcmd, logFile)
 
-        if cls._auths[ipaddress].poll() is not None:
+    @classmethod
+    def checkAuth(cls, auth, authcmd, logFile):
+        if auth.poll() is not None:
             print(f"\n*** startAuth log for {logFile} ***")
             with open(logFile, 'r') as fdLog:
                 print(fdLog.read())
             print(f"*** End startAuth log for {logFile} ***")
-            raise AssertionError('%s failed (%d)' % (authcmd, cls._auths[ipaddress].returncode))
+            raise AssertionError('%s failed (%d)' % (authcmd, auth.returncode))
 
     @classmethod
     def checkConfdir(cls, confdir):
@@ -747,6 +760,18 @@ distributor-threads={threads}
             raise AssertionError('%s failed (%d): %s' % (rec_controlCmd, e.returncode, e.output))
 
     @classmethod
+    def recFeatures(cls):
+        rec_versionCmd = [os.environ['PDNSRECURSOR'],
+                          '--version']
+        try:
+            full = subprocess.check_output(rec_versionCmd, text=True, stderr=subprocess.STDOUT)
+            for line in full.splitlines():
+                if line.startswith("Features: "):
+                    return line
+        except subprocess.CalledProcessError as e:
+            raise AssertionError('%s failed (%d): %s' % (rec_versionCmd, e.returncode, e.output))
+
+    @classmethod
     def setUpSockets(cls):
         print("Setting up UDP socket..")
         cls._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -761,19 +786,42 @@ distributor-threads={threads}
 
         confdir = os.path.join('configs', cls._confdir)
         cls.createConfigDir(confdir)
-        cls.generateAllAuthConfig(confdir)
-        cls.startAllAuth(confdir)
 
         cls.generateRecursorConfig(confdir)
         cls.startRecursor(confdir, cls._recursorPort)
 
+#        for auth_suffix, _ in RecursorTest._auth_zones.items():
+#            ip = RecursorTest._PREFIX + '.' + auth_suffix
+#            auth = RecursorTest._auths[ip]
+#            logFile = os.path.join(confdir, 'auth-'+ auth_suffix, 'pdns.log')
+#            RecursorTest.checkAuth(auth, 'auth-' + ip, logFile)
+
         print("Launching tests..")
 
     @classmethod
-    def tearDownClass(cls):
-        cls.tearDownRecursor()
-        cls.tearDownAuth()
-        cls.tearDownResponders()
+    def tearDownClass(cls, withAuths=False):
+        rec = None
+        auth = None
+        resp = None
+        try:
+            cls.tearDownRecursor()
+        except BaseException as e:
+            rec = e
+        try:
+            if withAuths:
+                cls.tearDownAuth()
+        except BaseException as e:
+            auth = e
+        try:
+            cls.tearDownResponders()
+        except BaseException as e:
+            resp = e
+        if rec is not None:
+            raise rec
+        if auth is not None:
+            raise auth
+        if resp is not None:
+            raise resp
 
     @classmethod
     def tearDownResponders(cls):
@@ -786,11 +834,11 @@ distributor-threads={threads}
             return
         try:
             p.terminate()
-            for count in range(100): # tsan can be slow
+            for count in range(1000): # tsan can be slow
                 x = p.poll()
                 if x is not None:
                     break
-                time.sleep(0.1)
+                time.sleep(0.01)
             if x is None:
                 print("kill...", p, file=sys.stderr)
                 p.kill()
@@ -826,10 +874,10 @@ distributor-threads={threads}
             raise AssertionError('%s failed (%d): %s' % (rec_controlCmd, e.returncode, e.output))
         # Wait for it, as the process really should have exited
         p = cls._recursor
-        for count in range(100): # tsan can be slow
+        for count in range(1000): # tsan can be slow
             if p.poll() is not None:
                 break
-            time.sleep(0.1)
+            time.sleep(0.01)
         if p.poll() is None:
             raise AssertionError('Process did not exit on request within 10s')
         if p.returncode not in (0, -15):
@@ -1300,7 +1348,7 @@ distributor-threads={threads}
         return response
 
     @classmethod
-    def handleTCPConnection(cls, conn, fromQueue, toQueue, trailingDataResponse=False, multipleResponses=False, callback=None, partialWrite=False):
+    def handleTCPConnection(cls, conn, fromQueue, toQueue, trailingDataResponse=False, multipleResponses=False, callback=None, partialWrite=False,clientCert=False):
       ignoreTrailing = trailingDataResponse is True
       try:
         data = conn.recv(2)
@@ -1310,6 +1358,15 @@ distributor-threads={threads}
       if not data:
         conn.close()
         return
+
+      if clientCert:
+          print("Checking client cert")
+          cert = conn.getpeercert()
+          if cert is None:
+              raise AssertionError("Client certificate expected, got none")
+          if cert['subject'][0][0][1] != 'client.tests.powerdns.com':
+              print(cert)
+              raise AssertionError('Unexpected subject in cert')
 
       (datalen,) = struct.unpack("!H", data)
       data = conn.recv(datalen)
@@ -1371,7 +1428,7 @@ distributor-threads={threads}
       conn.close()
 
     @classmethod
-    def TCPResponder(cls, port, fromQueue, toQueue, trailingDataResponse=False, multipleResponses=False, callback=None, tlsContext=None, multipleConnections=False, listeningAddr='127.0.0.1', partialWrite=False):
+    def TCPResponder(cls, port, fromQueue, toQueue, trailingDataResponse=False, multipleResponses=False, callback=None, tlsContext=None, multipleConnections=False, listeningAddr='127.0.0.1', partialWrite=False, clientCert=False):
         cls._backgroundThreads[threading.get_native_id()] = True
         # trailingDataResponse=True means "ignore trailing data".
         # Other values are either False (meaning "raise an exception")
@@ -1411,11 +1468,11 @@ distributor-threads={threads}
             if multipleConnections:
               thread = threading.Thread(name='TCP Connection Handler',
                                         target=cls.handleTCPConnection,
-                                        args=[conn, fromQueue, toQueue, trailingDataResponse, multipleResponses, callback, partialWrite])
+                                        args=[conn, fromQueue, toQueue, trailingDataResponse, multipleResponses, callback, partialWrite, clientCert])
               thread.daemon = True
               thread.start()
             else:
-              cls.handleTCPConnection(conn, fromQueue, toQueue, trailingDataResponse, multipleResponses, callback, partialWrite)
+              cls.handleTCPConnection(conn, fromQueue, toQueue, trailingDataResponse, multipleResponses, callback, partialWrite, clientCert)
 
         sock.close()
 
@@ -1424,3 +1481,5 @@ class ResponderDropAction(object):
     An object to indicate a drop action shall be taken
     """
     pass
+
+

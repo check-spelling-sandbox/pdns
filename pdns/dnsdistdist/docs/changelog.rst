@@ -2,6 +2,400 @@ Changelog
 =========
 
 .. changelog::
+  :version: 2.1.0-beta1
+  :released: 23rd of February 2026
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16786
+
+    Opentelemetry: add flags field in TRACEPARENT EDNS option
+
+  .. change::
+    :tags: Bug Fixes
+    :pullreq: 16793
+
+    Do not create ``dnsdist.yml`` in RPM system configuration directory
+
+  .. change::
+    :tags: New Features
+    :pullreq: 16796
+
+    Add ``prepend`` and ``append`` methods to Lua DNSName
+
+  .. change::
+    :tags: Bug Fixes
+    :pullreq: 16798
+
+    Only install ``dnsdist.yml-dist`` if ``yaml`` support was enabled (Holger Hoffstätte)
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16799
+
+    Update ``ipcrypt2`` to 1.1.10 + 1 commit
+
+  .. change::
+    :tags: Improvements, DNS over QUIC, DNS over HTTP3
+    :pullreq: 16802
+
+    Work around Quiche not dealing well with removed congestion algorithms
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16805
+
+    Better handling of invalid ``Base64`` content
+
+  .. change::
+    :tags: Bug Fixes
+    :pullreq: 16806
+
+    Fix build issues with ``ipcrypt2``
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16822
+
+    Add missing ``noexcept`` on move ctors/assignment operators
+
+  .. change::
+    :tags: Improvements, Protobuf
+    :pullreq: 16823
+
+    Export DNS flags via ProtoBuf
+
+  .. change::
+    :tags: Improvements, DNS over QUIC, DNS over HTTP3
+    :pullreq: 16849
+
+    Update Quiche to 0.24.9 in our packages
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16856
+
+    Update rustc and cargo to 1.93
+
+  .. change::
+    :tags: Bug Fixes
+    :pullreq: 16870
+
+    Correctly set Span ID to downstreams
+
+  .. change::
+    :tags: New Features
+    :pullreq: 16879
+
+    Add actions, methods and FFI functions to unset a tag
+
+  .. change::
+    :tags: New Features
+    :pullreq: 16880
+
+    Implement "allowed rcodes/total" ratio dynamic rule
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16881
+
+    Subnets excluded from dynamic rules should not count towards thresholds
+
+  .. change::
+    :tags: Bug Fixes
+    :pullreq: 16887
+
+    Fix invalid ``substr()`` use in the DNS overlay parser
+
+  .. change::
+    :tags: New Features
+    :pullreq: 16889
+
+    Add a Lua callback to validate health-check responses
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16890
+
+    Clean up the type mess around latency metrics (again)
+
+  .. change::
+    :tags: Bug Fixes
+    :pullreq: 16898
+
+    Don't start the NetworkListener thread in config check mode
+
+  .. change::
+    :tags: Bug Fixes
+    :pullreq: 16907
+
+    Meson: Add missing checks for ``TLS_client_method``, ``gnutls_transport_set_fastopen``
+
+.. changelog::
+  :version: 2.1.0-alpha1
+  :released: 29th of January 2026
+
+  .. change::
+    :tags: New Features
+    :pullreq: 15714
+
+    Support server state change lua callback (@pacnal)
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 15731
+
+    Add ``:getQueries()`` method to Server class (Lucas Rolff)
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 15788
+
+    Clang-tidy: replace ``lock_guard`` with ``scoped_lock`` (Rosen Penev)
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 15890
+
+    LuaWrapper: Add support for ``std::optional``
+
+  .. change::
+    :tags: Improvements, Performance
+    :pullreq: 15924
+
+    Refactor server pools and load-balancing policies
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 15930
+
+    Backend QPS limit refactoring
+
+  .. change::
+    :tags: New Features
+    :pullreq: 15946
+    :tickets: 6759
+
+    Add Lua parsers for A, AAAA and CNAME records (Ensar Sarajčić)
+
+  .. change::
+    :tags: Improvements, Performance
+    :pullreq: 16039
+
+    Speed up cache hits by skipping the LB policy when possible
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16070
+    :tickets: 16060
+
+    Skip EDNS padding content by default in the packet cache
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16071
+    :tickets: 16068
+
+    Add support for TCP Fast Open for downstream connections on macOS (Karel Bilek)
+
+  .. change::
+    :tags: New Features
+    :pullreq: 16108
+
+    Implement simple packet shuffle in cache (Karel Bilek)
+
+  .. change::
+    :tags: New Features
+    :pullreq: 16123
+    :tickets: 16110
+
+    Add IPCrypt2 PFX to Remote(Response)LogAction
+
+  .. change::
+    :tags: New Features
+    :pullreq: 16182
+
+    Add OpenTelemetry Tracing support (Pieter Lexis)
+
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16192
+
+    Add a metric for the latency of the latest health-check
+
+  .. change::
+    :tags: Improvements, Performance
+    :pullreq: 16239
+    :tickets: 16234
+
+    Add fast path to ``roundrobin`` load balancing policy (Holger Hoffstätte)
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16334
+
+    Luawrapper: correct ``lua_pop`` argument
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16349
+
+    Add code for micro-benchmarks
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16440
+    :tickets: 16091
+
+    Cleanup endianness determining code
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16487
+
+    Switch trivial usage of ``boost::optional`` to ``std::optional``
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16505
+
+    Apply clang-tidy recommendations to the packet cache code
+
+  .. change::
+    :tags: Improvements, Performance
+    :pullreq: 16511
+
+    Reuse the vector of packets between ``XSK`` recv rounds
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16521
+
+    Cleanup of the ``AF_XDP``/``XSK`` code
+
+  .. change::
+    :tags: Bug Fixes
+    :pullreq: 16545
+
+    Report the proper Lua function when parsing fails
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16556
+
+    Apply Clippy's suggestions to our Rust code
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16563
+
+    Get rid of our own ``random`` code and use ``dns_random``
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16601
+
+    Remove some ``boost::optional`` leftovers
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16622
+
+    LuaWrapper: Add support for ``std::variant``
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16643
+
+    Update our Rust dependencies
+
+  .. change::
+    :tags: Bug Fixes
+    :pullreq: 16661
+
+    Handle escaped values in YAML SpoofRaw parameters
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16668
+
+    Add a histogram of health-check latencies for backends
+
+  .. change::
+    :tags: Bug Fixes, DNS over TLS, DNS over HTTPS, DNS over QUIC, DNS over HTTP3
+    :pullreq: 16674
+
+    Fix handling of IP-only TLS certificates
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16680
+
+    Add a way to add multiple EDE codes to a packet (Ensar Sarajčić)
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16691
+
+    Add support for structured logging
+
+  .. change::
+    :tags: Bug Fixes
+    :pullreq: 16720
+
+    Fix wrong address being inserted in the rings for responses
+
+  .. change::
+    :tags: Bug Fixes
+    :pullreq: 16721
+
+    Do not keep stale cache entries around for empty pools
+
+  .. change::
+    :tags: Removals, DNS over HTTPS
+    :pullreq: 16723
+
+    Remove h2o support
+
+  .. change::
+    :tags: New Features
+    :pullreq: 16726
+    :tickets: 16261
+
+    Add global ServerID
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16738
+
+    Update JavaScript libraries used by the internal Web dashboard
+
+  .. change::
+    :tags: Improvements, DNS over QUIC, DNS over HTTP3
+    :pullreq: 16742, 16771
+
+    Update Quiche to 0.24.8 in our packages
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16744
+
+    Look for a ``.yml`` configuration file first
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16768
+
+    Implement sampling in our in-memory ring buffers
+
+  .. change::
+    :tags: Improvements
+    :pullreq: 16776
+
+    Format all source files
+
+.. changelog::
   :version: 2.0.2
   :released: 2nd of December 2025
 

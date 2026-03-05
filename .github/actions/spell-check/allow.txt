@@ -607,7 +607,6 @@ datalen
 datapoints
 datapos
 dataret
-datefudge
 datestr
 datetime
 DBC
@@ -2219,7 +2218,6 @@ nodelegated
 NODENIAL
 nodist
 nodnssec
-NODNSTAPTESTS
 nodot
 nodownstream
 nodyndns

@@ -110,6 +110,7 @@ Overrides the :ref:`setting-allow-from` setting. Example content of th specified
 Domain names specified in this list are used to permit incoming
 NOTIFY operations to wipe any cache entries that match the domain
 name. If this list is empty, all NOTIFY operations will be ignored.
+Matching is done using suffix matching, it is allowed to NOTIFY a subdomain of a listed domain.
  ''',
         'versionadded': '4.6.0',
         'runtime': ['reload-acls'],
@@ -1520,6 +1521,19 @@ See :ref:`handling-of-root-hints` for more information on this.
      'versionchanged': ('4.1.0', 'The minimum value of this setting is 15. i.e. setting this to lower than 15 will make this value 15.')
     },
     {
+        'name' : 'max_entry_size',
+        'section' : 'recordcache',
+        'oldname': 'max-recordcache-entry-size',
+        'type' : LType.Uint64,
+        'default' : '8192',
+        'help' : 'maximum storage size of a recordset stored in record cache',
+        'doc' : '''
+Maximum size of storage used by a single record cache entry. Entries larger than this number will not be stored.
+Zero means no limit.
+''',
+    'versionadded': ['5.1.10', '5.2.8', '5.3.5'],
+    },
+    {
         'name' : 'max_concurrent_requests_per_tcp_connection',
         'section' : 'incoming',
         'type' : LType.Uint64,
@@ -1596,16 +1610,41 @@ Maximum number of Packet Cache entries. Sharded and shared by all threads since 
         'runtime': 'set-max-packetcache-entries',
     },
     {
+        'name' : 'max_entry_size',
+        'section' : 'packetcache',
+        'oldname' : 'max-packetcache-entry-size',
+        'type' : LType.Uint64,
+        'default' : '8192',
+        'help' : 'maximum size of a packet stored in the the packet cache',
+        'doc' : '''
+Maximum size of packets stored in the packet cache. Packets larger than this number will not be stored.
+Zero means no limit.
+''',
+    'versionadded': ['5.1.10', '5.2.8', '5.3.5'],
+    },
+    {
         'name' : 'max_qperq',
         'section' : 'outgoing',
         'type' : LType.Uint64,
         'default' : '50',
-        'help' : 'Maximum outgoing queries per query',
+        'help' : 'Maximum outgoing queries per client query',
         'doc' : '''
 The maximum number of outgoing queries that will be sent out during the resolution of a single client query.
 This is used to avoid cycles resolving names.
  ''',
         'versionchanged': ('5.1.0', 'The default used to be 60, with an extra allowance if qname minimization was enabled. Having better algorithms allows for a lower default limit.'),
+    },
+    {
+        'name' : 'max_bytesperq',
+        'section' : 'outgoing',
+        'type' : LType.Uint64,
+        'default' : '100000',
+        'help' : 'Maximum number of received bytes per client query',
+        'doc' : '''
+The maximum number of cumulative bytes that will be accepted during the resolution of a single client query.
+This is useful to limit amplification attacks.
+ ''',
+        'versionadded': ['5.1.10', '5.2.8', '5.3.5'],
     },
     {
         'name' : 'max_cnames_followed',
@@ -2113,9 +2152,9 @@ Maximum number of seconds to cache an item in the packet cache, no matter what t
         'default' : '60',
         'help' : 'maximum number of seconds to keep a cached NxDomain or NoData entry in packetcache',
         'doc' : '''
-Maximum number of seconds to cache an ``NxDomain`` or ``NoData`` answer in the packetcache.
+Maximum number of seconds to cache an ``NxDomain`` or ``NoData`` (a ``NoError`` response without answer records) answer in the packetcache.
 This setting's maximum is capped to :ref:`setting-packetcache-ttl`.
-i.e. setting ``packetcache-ttl=15`` and keeping ``packetcache-negative-ttl`` at the default will lower ``packetcache-negative-ttl`` to ``15``.
+i.e. setting :ref:`setting-packetcache-ttl` to 15 and keeping :ref:`setting-packetcache-negative-ttl` at the default will lower the used value of :ref:`setting-packetcache-negative-ttl` to 15.
  ''',
     'versionadded': '4.9.0'
     },
@@ -2128,13 +2167,10 @@ i.e. setting ``packetcache-ttl=15`` and keeping ``packetcache-negative-ttl`` at 
         'help' : 'maximum number of seconds to keep a cached servfail entry in packetcache',
         'doc' : '''
 Maximum number of seconds to cache an answer indicating a failure to resolve in the packet cache.
-Before version 4.6.0 only ``ServFail`` answers were considered as such. Starting with 4.6.0, all responses with a code other than ``NoError`` and ``NXDomain``, or without records in the answer and authority sections, are considered as a failure to resolve.
+Before version 4.6.0 only ``ServFail`` answers were considered as such. All responses with a code other than ``NoError`` and ``NXDomain``, or without records in the answer and authority sections, are considered as a failure to resolve.
+This setting's maximum is capped to :ref:`setting-packetcache-ttl`. Setting :ref:`setting-packetcache-ttl` to 15 and keeping :ref:`setting-packetcache-servfail-ttl` at the default will lower the used value of :ref:`setting-packetcache-servfail-ttl` to 15.
 Since 4.9.0, negative answers are handled separately from resolving failures.
- ''',
-        'doc-rst' : '''
-        'versionchanged': ('4.0.0', "This setting's maximum is capped to :ref:`setting-packetcache-ttl`.
-    i.e. setting ``packetcache-ttl=15`` and keeping ``packetcache-servfail-ttl`` at the default will lower ``packetcache-servfail-ttl`` to ``15``.")
- '''
+''',
     },
     {
         'name' : 'shards',
@@ -2767,7 +2803,7 @@ A sequence of statistic names, that are prevented from being exported via SNMP, 
         'default' : 'true',
         'help' : 'Prefer structured logging',
         'doc' : '''
-Prefer structured logging when both an old style and a structured log messages is available.
+Prefer structured logging when both an old style and a structured log message are available.
  ''',
         'versionadded': '4.6.0',
         'versionchanged': [('5.0.0', 'Disabling structured logging is deprecated'),

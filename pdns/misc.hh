@@ -773,6 +773,35 @@ auto checked_stoi(const std::string& str, size_t* idx = nullptr, int base = 10) 
 }
 
 /**
+ * \brief Performs a conversion from `std::string&` to non-zero integer.
+ *
+ * This function internally calls `checked_stoi` *
+ *
+ * \warning The target type `T` must be an integer, otherwise a
+ * compilation error is thrown.
+ *
+ * \exception pdns::checked_stoi Throws what pdns::checked_stoi throws.
+ *
+ * \param[in] str The input string to be converted.
+ *
+ * \param[in] idx Location to store the index at which processing
+ * stopped. If the input `str` is empty, `*idx` shall be set to 0.
+ *
+ * \param[in] base The numerical base for conversion.
+ *
+ * \return `str` converted to non-zero integer `T`.
+ */
+template <typename T>
+auto checked_stoi_nonzero(const std::string& str, size_t* idx = nullptr, int base = 10) -> T
+{
+  T ret = checked_stoi<T>(str, idx, base);
+  if (ret == 0) {
+    throw std::out_of_range("checked_stoi_nonzero: value cannot be 0");
+  }
+  return ret;
+}
+
+/**
  * \brief Performs a conversion from `std::string&` to integer.
  *
  * This function internally calls `pdns::checked_stoi` and stores its
@@ -806,8 +835,11 @@ std::vector<ComboAddress> getResolvers(const std::string& resolvConfPath);
 
 DNSName reverseNameFromIP(const ComboAddress& ip);
 
-size_t parseRFC1035CharString(std::string_view in, std::string &val); // from ragel
-size_t parseSVCBValueListFromParsedRFC1035CharString(const std::string &in, vector<std::string> &val); // from ragel
+// The following two routines are generated from Ragel code.
+// Note that parseRFC1035CharString will return zero if the first character
+// being processed is < 0x20, >= 07f, or equal to 0x28, 0x29 or 0x3b.
+size_t parseRFC1035CharString(std::string_view in, std::string &val);
+size_t parseSVCBValueListFromParsedRFC1035CharString(const std::string &in, vector<std::string> &val);
 size_t parseSVCBValueList(const std::string &in, vector<std::string> &val);
 
 std::string makeLuaString(const std::string& in);

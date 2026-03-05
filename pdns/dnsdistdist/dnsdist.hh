@@ -37,6 +37,7 @@
 #include "circular_buffer.hh"
 #include "dnsdist-idstate.hh"
 #include "dnsdist-lbpolicies.hh"
+#include "dnsdist-logging.hh"
 #include "dnsdist-protocols.hh"
 #include "dnsname.hh"
 #include "dnsdist-doh-common.hh"
@@ -148,6 +149,24 @@ struct DNSQuestion
     ids.qTag->insert_or_assign(key, std::move(value));
   }
 
+  void unsetTag(const std::string& key)
+  {
+    if (ids.qTag) {
+      ids.qTag->erase(key);
+    }
+  }
+
+  std::optional<std::string> getTag(const std::string& key) const
+  {
+    if (ids.qTag) {
+      const auto tagIt = ids.qTag->find(key);
+      if (tagIt != ids.qTag->cend()) {
+        return tagIt->second;
+      }
+    }
+    return std::nullopt;
+  }
+
   const struct timespec& getQueryRealTime() const
   {
     return ids.queryRealTime.d_start;
@@ -168,8 +187,14 @@ struct DNSQuestion
     return ids.cs;
   }
 
+  std::shared_ptr<const Logr::Logger> getLogger(std::shared_ptr<const Logr::Logger> parent = nullptr) const;
+  std::shared_ptr<const Logr::Logger> getLogger(std::shared_ptr<const Logr::Logger> parent = nullptr);
+
 protected:
+  virtual std::shared_ptr<const Logr::Logger> getThisLogger(std::shared_ptr<const Logr::Logger> parent) const;
+
   PacketBuffer& data;
+  std::shared_ptr<const Logr::Logger> d_logger;
 
 public:
   InternalQueryState& ids;
@@ -197,6 +222,9 @@ struct DNSResponse : DNSQuestion
   DNSResponse(DNSResponse&&) = default;
 
   const std::shared_ptr<DownstreamState>& d_downstream;
+
+protected:
+  std::shared_ptr<const Logr::Logger> getThisLogger(std::shared_ptr<const Logr::Logger> parent) const override;
 };
 
 using pdns::stat_t;
@@ -521,7 +549,9 @@ struct DownstreamState : public std::enable_shared_from_this<DownstreamState>
   DownstreamState& operator=(const DownstreamState&) = delete;
   DownstreamState& operator=(DownstreamState&&) = delete;
 
-  typedef std::function<std::tuple<DNSName, uint16_t, uint16_t>(const DNSName&, uint16_t, uint16_t, dnsheader*)> checkfunc_t;
+  using HealthCheckQueryGenerator = std::function<std::tuple<DNSName, uint16_t, uint16_t>(const DNSName&, uint16_t, uint16_t, dnsheader*)>;
+  using HealthCheckResponseValidator = std::function<bool(const DNSResponse*)>;
+
   enum class Availability : uint8_t
   {
     Up,
@@ -552,7 +582,8 @@ struct DownstreamState : public std::enable_shared_from_this<DownstreamState>
     TLSContextParameters d_tlsParams;
     set<string> pools;
     std::set<int> d_cpus;
-    checkfunc_t checkFunction;
+    HealthCheckQueryGenerator d_healthCheckGenerationFunction;
+    HealthCheckResponseValidator d_healthCheckResponseValidationCallback;
     std::optional<boost::uuids::uuid> id;
     DNSName checkName{"a.root-servers.net."};
     ComboAddress remote;
@@ -867,9 +898,9 @@ public:
     tcpAvgConnectionDuration = (99.0 * tcpAvgConnectionDuration / 100.0) + (durationMs / 100.0);
   }
 
-  void updateTCPLatency(double udiff)
+  void updateTCPLatency(double latencyUs)
   {
-    latencyUsecTCP = (127.0 * latencyUsecTCP / 128.0) + udiff / 128.0;
+    latencyUsecTCP = (127.0 * latencyUsecTCP / 128.0) + latencyUs / 128.0;
   }
 
   void incQueriesCount()
@@ -937,6 +968,8 @@ public:
   }
 
   unsigned int getQPSLimit() const;
+
+  [[nodiscard]] std::shared_ptr<const Logr::Logger> getLogger() const;
 };
 
 void responderThread(std::shared_ptr<DownstreamState> dss);
@@ -988,7 +1021,7 @@ bool assignOutgoingUDPQueryToBackend(std::shared_ptr<DownstreamState>& downstrea
 
 ssize_t udpClientSendRequestToBackend(const std::shared_ptr<DownstreamState>& backend, const int socketDesc, const PacketBuffer& request, bool healthCheck = false);
 bool sendUDPResponse(int origFD, const PacketBuffer& response, const int delayMsec, const ComboAddress& origDest, const ComboAddress& origRemote);
-void handleResponseSent(const DNSName& qname, const QType& qtype, int udiff, const ComboAddress& client, const ComboAddress& backend, unsigned int size, const dnsheader& cleartextDH, dnsdist::Protocol outgoingProtocol, dnsdist::Protocol incomingProtocol, bool fromBackend);
-void handleResponseSent(const InternalQueryState& ids, int udiff, const ComboAddress& client, const ComboAddress& backend, unsigned int size, const dnsheader& cleartextDH, dnsdist::Protocol outgoingProtocol, bool fromBackend);
+void handleResponseSent(const DNSName& qname, const QType& qtype, double latencyUs, const ComboAddress& client, const ComboAddress& backend, unsigned int size, const dnsheader& cleartextDH, dnsdist::Protocol outgoingProtocol, dnsdist::Protocol incomingProtocol, bool fromBackend);
+void handleResponseSent(const InternalQueryState& ids, double latencyUs, const ComboAddress& client, const ComboAddress& backend, unsigned int size, const dnsheader& cleartextDH, dnsdist::Protocol outgoingProtocol, bool fromBackend);
 bool handleTimeoutResponseRules(const std::vector<dnsdist::rules::ResponseRuleAction>& rules, InternalQueryState& ids, const std::shared_ptr<DownstreamState>& ds, const std::shared_ptr<TCPQuerySender>& sender);
 void handleServerStateChange(const std::string& nameWithAddr, bool newResult);

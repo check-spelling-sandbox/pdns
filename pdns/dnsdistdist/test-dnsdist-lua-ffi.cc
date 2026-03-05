@@ -328,6 +328,11 @@ BOOST_AUTO_TEST_CASE(test_Query)
     BOOST_CHECK_EQUAL(std::string(tags[0].name), tagName.c_str());
     BOOST_CHECK_EQUAL(std::string(tags[0].value), tagValue.c_str());
 
+    dnsdist_ffi_dnsquestion_unset_tag(&lightDQ, tagName.c_str());
+
+    got = dnsdist_ffi_dnsquestion_get_tag(&lightDQ, tagName.c_str());
+    BOOST_CHECK(got == nullptr);
+
     dnsdist_ffi_dnsquestion_set_tag_raw(&lightDQ, tagName.c_str(), tagRawValue.c_str(), tagRawValue.size());
 
     // too small
@@ -838,7 +843,11 @@ BOOST_AUTO_TEST_CASE(test_RingBuffers)
   gettime(&now);
 
   g_rings.reset();
-  g_rings.init(10000, 10);
+  Rings::RingsConfiguration config{
+    .capacity = 10000U,
+    .numberOfShards = 10U,
+  };
+  g_rings.init(config);
   BOOST_CHECK_EQUAL(g_rings.getNumberOfQueryEntries(), 0U);
 
   g_rings.insertQuery(now, requestor1, qname, qtype, size, dh, protocol);

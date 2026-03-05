@@ -7,7 +7,8 @@ import threading
 import time
 import dns
 import dnstap_pb2
-from unittest import SkipTest
+import pytest
+import traceback
 from recursortests import RecursorTest
 
 FSTRM_CONTROL_ACCEPT = 0x01
@@ -129,7 +130,7 @@ def fstrm_make_control_frame_reply(cft):
     elif cft == FSTRM_CONTROL_START:
         return None
     else:
-        raise Exception('unhandled control frame ' + cft)
+        raise Exception('unhandled control frame ' + str(cft))
 
 
 def fstrm_read_and_dispatch_control_frame(conn):
@@ -219,12 +220,9 @@ class TestRecursorDNSTap(RecursorTest):
         sock.close()
 
     @classmethod
+    @pytest.mark.skipif('dnstap-framestream' not in RecursorTest.recFeatures(), reason='dnstap feature not available')
     def setUpClass(cls):
-        if os.environ.get("NODNSTAPTESTS") == "1":
-            raise SkipTest("Not Yet Supported")
-
         cls.setUpSockets()
-
         cls.startResponders()
 
         listener = threading.Thread(name='DNSTap Listener', target=cls.FrameStreamUnixListenerMain, args=[DNSTapServerParameters])
@@ -266,9 +264,9 @@ cname 3600 IN CNAME a.example.
 
     @classmethod
     def tearDownClass(cls):
-        cls.tearDownRecursor()
-        for listerner in DNSTapListeners:
-            listerner.close()
+        for listener in DNSTapListeners:
+            listener.close()
+        super().tearDownClass()
 
     def getFirstDnstap(self):
         try:

@@ -83,22 +83,6 @@ PacketHandler::PacketHandler():B(g_programname), d_dk(&B)
     d_pdl = std::make_unique<AuthLua4>(::arg()["lua-global-include-dir"]);
     d_pdl->loadFile(fname);
   }
-  fname = ::arg()["lua-dnsupdate-policy-script"];
-  if (fname.empty())
-  {
-    d_update_policy_lua = nullptr;
-  }
-  else
-  {
-    try {
-      d_update_policy_lua = std::make_unique<AuthLua4>();
-      d_update_policy_lua->loadFile(fname);
-    }
-    catch (const std::runtime_error& e) {
-      g_log<<Logger::Warning<<"Failed to load update policy - disabling: "<<e.what()<<endl;
-      d_update_policy_lua = nullptr;
-    }
-  }
 }
 
 UeberBackend *PacketHandler::getBackend()
@@ -1833,8 +1817,16 @@ bool PacketHandler::opcodeQueryInner2(DNSPacket& pkt, queryState &state, bool re
         g_log<<Logger::Info<<"ALIAS record found for "<<state.target<<", but ALIAS expansion is disabled."<<endl;
         continue;
       }
-      haveAlias=getRR<ALIASRecordContent>(zrr.dr)->getContent();
-      aliasScopeMask=zrr.scopeMask;
+      // DNSProxy::completePacket(), in its current state, can only process one
+      // alias if !state.r->d_tcp, so ignore any further ALIAS results (but
+      // warn about them)
+      if (haveAlias.empty()) {
+        haveAlias=getRR<ALIASRecordContent>(zrr.dr)->getContent();
+        aliasScopeMask=zrr.scopeMask;
+      }
+      else {
+        g_log << Logger::Warning << "extra ALIAS record for " << state.target << ", contents " << getRR<ALIASRecordContent>(zrr.dr)->getContent() << " ignored." << endl;
+      }
     }
 
     // Filter out all SOA's and add them in later

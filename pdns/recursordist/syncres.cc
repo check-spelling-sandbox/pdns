@@ -19,12 +19,11 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
-#include <optional>
-#ifdef HAVE_CONFIG_H
-#include <utility>
 
 #include "config.h"
-#endif
+
+#include <optional>
+#include <utility>
 
 #include "arguments.hh"
 #include "aggressive_nsec.hh"
@@ -42,6 +41,7 @@
 #include "rec-taskqueue.hh"
 #include "shuffle.hh"
 #include "rec-nsspeeds.hh"
+#include "resolve-context.hh"
 
 rec::GlobalCounters g_Counters;
 thread_local rec::TCounters t_Counters(g_Counters);
@@ -351,6 +351,7 @@ unsigned int SyncRes::s_maxnegttl;
 unsigned int SyncRes::s_maxbogusttl;
 unsigned int SyncRes::s_maxcachettl;
 unsigned int SyncRes::s_maxqperq;
+unsigned int SyncRes::s_maxbytesperq;
 unsigned int SyncRes::s_maxnsperresolve;
 unsigned int SyncRes::s_maxnsaddressqperq;
 unsigned int SyncRes::s_maxtotusec;
@@ -461,7 +462,7 @@ static inline void accountAuthLatency(uint64_t usec, int family)
 }
 
 SyncRes::SyncRes(const struct timeval& now) :
-  d_authzonequeries(0), d_outqueries(0), d_tcpoutqueries(0), d_dotoutqueries(0), d_throttledqueries(0), d_timeouts(0), d_unreachables(0), d_totUsec(0), d_fixednow(now), d_now(now), d_cacheonly(false), d_doDNSSEC(false), d_doEDNS0(false), d_qNameMinimization(s_qnameminimization), d_lm(s_lm)
+  d_authzonequeries(0), d_outqueries(0), d_tcpoutqueries(0), d_dotoutqueries(0), d_throttledqueries(0), d_timeouts(0), d_unreachables(0), d_bytesReceived(0), d_totUsec(0), d_fixednow(now), d_now(now), d_cacheonly(false), d_doDNSSEC(false), d_doEDNS0(false), d_qNameMinimization(s_qnameminimization), d_lm(s_lm)
 {
   d_validationContext.d_nsec3IterationsRemainingQuota = s_maxnsec3iterationsperq > 0 ? s_maxnsec3iterationsperq : std::numeric_limits<decltype(d_validationContext.d_nsec3IterationsRemainingQuota)>::max();
 }
@@ -3493,7 +3494,10 @@ vector<ComboAddress> SyncRes::retrieveAddressesForNS(const std::string& prefix, 
 void SyncRes::checkMaxQperQ(const DNSName& qname) const
 {
   if (d_outqueries + d_throttledqueries > s_maxqperq) {
-    throw ImmediateServFailException("more than " + std::to_string(s_maxqperq) + " (max-qperq) queries sent or throttled while resolving " + qname.toLogString());
+    throw ImmediateServFailException("More than " + std::to_string(s_maxqperq) + " (outgoing.max_qperq) queries sent or throttled while resolving " + qname.toLogString());
+  }
+  if (d_bytesReceived > s_maxbytesperq) {
+    throw ImmediateServFailException("More than " + std::to_string(s_maxbytesperq) + " (outgoing.max_bytesperq) bytes received while resolving " + qname.toLogString());
   }
 }
 
@@ -4202,6 +4206,25 @@ static bool isRedirection(QType qtype)
   return qtype == QType::CNAME || qtype == QType::DNAME;
 }
 
+// Walk the chain from qname, only adding names that can be reached
+static std::unordered_set<DNSName> sanitizeCNAMEChain(const DNSName& qname, std::unordered_map<DNSName, DNSName>& cnameChain)
+{
+  std::unordered_set<DNSName> allowed = {qname};
+  DNSName key{qname};
+  while (true) {
+    if (auto probe = cnameChain.find(key); probe != cnameChain.end()) {
+      allowed.emplace(probe->second);
+      key = probe->second;
+      // This will prevent looping in this function. CNAME loops themselves we handle higher up, see handleNewTarget()
+      cnameChain.erase(probe);
+    }
+    else {
+      break;
+    }
+  }
+  return allowed;
+}
+
 void SyncRes::sanitizeRecords(const std::string& prefix, LWResult& lwr, const DNSName& qname, const QType qtype, const DNSName& auth, bool wasForwarded, bool rdQuery)
 {
   const bool wasForwardRecurse = wasForwarded && rdQuery;
@@ -4209,6 +4232,7 @@ void SyncRes::sanitizeRecords(const std::string& prefix, LWResult& lwr, const DN
      to remain */
   std::unordered_set<DNSName> allowedAdditionals = {qname};
   std::unordered_set<DNSName> allowedAnswerNames = {qname};
+  std::unordered_map<DNSName, DNSName> cnameChain;
   bool cnameSeen = false;
   bool haveAnswers = false;
   bool acceptDelegation = false;
@@ -4283,7 +4307,7 @@ void SyncRes::sanitizeRecords(const std::string& prefix, LWResult& lwr, const DN
       haveAnswers = true;
       if (rec->d_type == QType::CNAME) {
         if (auto cnametarget = getRR<CNAMERecordContent>(*rec); cnametarget != nullptr) {
-          allowedAnswerNames.insert(cnametarget->getTarget());
+          cnameChain.emplace(rec->d_name, cnametarget->getTarget());
         }
         cnameSeen = cnameSeen || qname == rec->d_name;
       }
@@ -4347,6 +4371,10 @@ void SyncRes::sanitizeRecords(const std::string& prefix, LWResult& lwr, const DN
     acceptDelegation = true;
   }
 
+  if (cnameChain.size() > 0) {
+    auto allowed = sanitizeCNAMEChain(qname, cnameChain);
+    allowedAnswerNames.insert(allowed.begin(), allowed.end());
+  }
   sanitizeRecordsPass2(prefix, lwr, qname, qtype, auth, allowedAnswerNames, allowedAdditionals, cnameSeen, acceptDelegation && !soaInAuth, skipvec, skipCount);
 }
 
@@ -4661,6 +4689,8 @@ RCode::rcodes_ SyncRes::updateCacheFromRecords(unsigned int depth, const string&
   }
 
   bool seenBogusRRSet = false;
+  std::vector<tcache_t::value_type> aggrCacheRecords;
+  bool insertIntoAggressiveCache = false;
   for (auto tCacheEntry = tcache.begin(); tCacheEntry != tcache.end(); ++tCacheEntry) {
 
     if (tCacheEntry->second.records.empty()) { // this happens when we did store signatures, but passed on the records themselves
@@ -4865,11 +4895,32 @@ RCode::rcodes_ SyncRes::updateCacheFromRecords(unsigned int depth, const string&
 
     if (g_aggressiveNSECCache && (tCacheEntry->first.type == QType::NSEC || tCacheEntry->first.type == QType::NSEC3) && recordState == vState::Secure && !seenAuth.empty()) {
       // Good candidate for NSEC{,3} caching
-      g_aggressiveNSECCache->insertNSEC(seenAuth, tCacheEntry->first.name, tCacheEntry->second.records.at(0), tCacheEntry->second.signatures, tCacheEntry->first.type == QType::NSEC3, qname, qtype);
+      aggrCacheRecords.emplace_back(*tCacheEntry);
+      if (!insertIntoAggressiveCache) {
+        if (tCacheEntry->first.type == QType::NSEC) {
+          // NSECs have no additonal condition, just take them
+          insertIntoAggressiveCache = true;
+        }
+        else if (tCacheEntry->first.type == QType::NSEC3 && !AggressiveNSECCache::nsec3Disabled()) {
+          // If at least one of the NSEC3s covers quite some names, we will take all of them, as likely all of them are needed for a denial proof.
+          if (auto content = getRR<NSEC3RecordContent>(tCacheEntry->second.records.at(0)); content != nullptr) {
+            if (!AggressiveNSECCache::isSmallCoveringNSEC3(tCacheEntry->first.name, content->d_nexthash)) {
+              insertIntoAggressiveCache = true;
+            }
+          }
+        }
+      }
     }
 
     if (tCacheEntry->first.place == DNSResourceRecord::ANSWER && ednsmask) {
       d_wasVariable = true;
+    }
+  }
+
+  // The primary loop determined if we want to take the NSEC(3) records
+  if (insertIntoAggressiveCache) {
+    for (const auto& entry : aggrCacheRecords) {
+      g_aggressiveNSECCache->insertNSEC(seenAuth, entry.first.name, entry.second.records.at(0), entry.second.signatures, entry.first.type == QType::NSEC3, qname, qtype);
     }
   }
 
@@ -5500,6 +5551,7 @@ bool SyncRes::doResolveAtThisIP(const std::string& prefix, const DNSName& qname,
     throw ImmediateServFailException("Query killed by policy");
   }
 
+  d_bytesReceived += lwr.d_bytesReceived;
   d_totUsec += lwr.d_usec;
 
   if (resolveret == LWResult::Result::Spoofed || resolveret == LWResult::Result::BadCookie) {
@@ -5823,6 +5875,13 @@ bool SyncRes::processAnswer(unsigned int depth, const string& prefix, LWResult& 
       nameservers.insert({nameserver, {{}, false}});
     }
     LOG("looping to them" << endl);
+    if (s_maxnsperresolve > 0 && nameservers.size() > s_maxnsperresolve) {
+      LOG(prefix << qname << "Reducing number of NS we are willing to consider to " << s_maxnsperresolve << endl);
+      NsSet selected;
+      std::sample(nameservers.cbegin(), nameservers.cend(), std::inserter(selected, selected.begin()), s_maxnsperresolve, pdns::dns_random_engine());
+      nameservers = std::move(selected);
+    }
+
     *gotNewServers = true;
     auth = std::move(newauth);
 
@@ -5876,11 +5935,17 @@ int SyncRes::doResolveAt(NsSet& nameservers, DNSName auth, bool flawedNSSet, con
     if (rnameservers.size() > nsLimit) {
       int newLimit = static_cast<int>(nsLimit - (rnameservers.size() - nsLimit));
       nsLimit = std::max(5, newLimit);
+      LOG("Applying nsLimit " << nsLimit << endl);
     }
 
+    // If multiple NS records resolve to the same IP, we don't want to ask again, so keep track
+    std::set<ComboAddress> visitedAddresses;
     for (auto tns = rnameservers.cbegin();; ++tns) {
       if (addressQueriesForNS >= nsLimit) {
-        throw ImmediateServFailException(std::to_string(nsLimit) + " (adjusted max-ns-address-qperq) or more queries with empty results for NS addresses sent resolving " + qname.toLogString());
+        throw ImmediateServFailException(std::to_string(nsLimit) + " (outgoing.max_ns_address_qperq) or more queries with empty results for NS addresses sent resolving " + qname.toLogString());
+      }
+      if (s_maxnsperresolve > 0 && visitedAddresses.size() > 2 * s_maxnsperresolve) {
+        throw ImmediateServFailException("More than " + std::to_string(2 * s_maxnsperresolve) + " (2 * outgoing.max_ns_per_resolve) identical queries sent to auth IPs sent resolving " + qname.toLogString());
       }
       if (tns == rnameservers.cend()) {
         LOG(prefix << qname << ": Failed to resolve via any of the " << (unsigned int)rnameservers.size() << " offered NS at level '" << auth << "'" << endl);
@@ -5978,6 +6043,11 @@ int SyncRes::doResolveAt(NsSet& nameservers, DNSName auth, bool flawedNSSet, con
         }
 
         for (remoteIP = remoteIPs.begin(); remoteIP != remoteIPs.end(); ++remoteIP) {
+          auto inserted = visitedAddresses.insert(*remoteIP).second;
+          if (!wasForwarded && !inserted) {
+            LOG(prefix << qname << ": Already visited " << remoteIP->toStringWithPort() << ", asking '" << qname << "|" << qtype << "'; skipping" << endl);
+            continue;
+          }
           LOG(prefix << qname << ": Trying IP " << remoteIP->toStringWithPort() << ", asking '" << qname << "|" << qtype << "'" << endl);
 
           if (throttledOrBlocked(prefix, *remoteIP, qname, qtype, pierceDontQuery)) {

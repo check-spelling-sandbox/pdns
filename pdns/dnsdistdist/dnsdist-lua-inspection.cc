@@ -145,7 +145,7 @@ static void statNodeRespRing(statvisitor_t visitor, uint64_t seconds)
       }
 
       const bool hit = entry.isACacheHit();
-      root.submit(entry.name, ((entry.dh.rcode == 0 && entry.usec == std::numeric_limits<unsigned int>::max()) ? -1 : entry.dh.rcode), entry.size, hit, std::nullopt);
+      root.submit(entry.name, ((entry.dh.rcode == 0 && entry.usec == std::numeric_limits<uint32_t>::max()) ? -1 : entry.dh.rcode), entry.size, hit, std::nullopt, g_rings.getSamplingRate());
     }
   }
 
@@ -245,7 +245,7 @@ static counts_t exceedRCode(unsigned int rate, int seconds, int rcode)
 {
   return exceedRespGen(rate, seconds, [rcode](counts_t& counts, const Rings::Response& resp) {
     if (resp.dh.rcode == rcode) {
-      counts[resp.requestor]++;
+      counts[resp.requestor] += g_rings.adjustForSamplingRate(1U);
     }
   });
 }
@@ -253,7 +253,7 @@ static counts_t exceedRCode(unsigned int rate, int seconds, int rcode)
 static counts_t exceedRespByterate(unsigned int rate, int seconds)
 {
   return exceedRespGen(rate, seconds, [](counts_t& counts, const Rings::Response& resp) {
-    counts[resp.requestor] += resp.size;
+    counts[resp.requestor] += g_rings.adjustForSamplingRate(resp.size);
   });
 }
 
@@ -883,7 +883,7 @@ void setupLuaInspection(LuaContext& luaCtx)
     setLuaNoSideEffect();
     return exceedQueryGen(rate, seconds, [type](counts_t& counts, const Rings::Query& query) {
       if (query.qtype == type) {
-        counts[query.requestor]++;
+        counts[query.requestor] += g_rings.adjustForSamplingRate(1U);
       }
     });
   });
@@ -891,7 +891,7 @@ void setupLuaInspection(LuaContext& luaCtx)
   luaCtx.writeFunction("exceedQRate", [](unsigned int rate, int seconds) {
     setLuaNoSideEffect();
     return exceedQueryGen(rate, seconds, [](counts_t& counts, const Rings::Query& query) {
-      counts[query.requestor]++;
+      counts[query.requestor] += g_rings.adjustForSamplingRate(1U);
     });
   });
 
@@ -900,7 +900,7 @@ void setupLuaInspection(LuaContext& luaCtx)
   /* StatNode */
   luaCtx.registerFunction<unsigned int (StatNode::*)() const>("numChildren",
                                                               [](const StatNode& node) -> unsigned int {
-                                                                return node.children.size();
+                                                                return node.size();
                                                               });
   luaCtx.registerMember("fullname", &StatNode::fullname);
   luaCtx.registerMember("labelsCount", &StatNode::labelsCount);
@@ -970,6 +970,18 @@ void setupLuaInspection(LuaContext& luaCtx)
       DynBlockRulesGroup::DynBlockRatioRule rule(reason, blockDuration, ratio, warningRatio ? *warningRatio : 0.0, seconds, action ? *action : DNSAction::Action::None, minimumNumberOfResponses);
       parseDynamicActionOptionalParameters("setRCodeRatio", rule, action, optionalParameters);
       group->setRCodeRatio(rcode, std::move(rule));
+    }
+  });
+  // NOLINTNEXTLINE(performance-unnecessary-value-param): optional parameters cannot be passed by const reference
+  luaCtx.registerFunction<void (std::shared_ptr<DynBlockRulesGroup>::*)(LuaArray<uint8_t>, double, unsigned int, const std::string&, unsigned int, size_t, std::optional<DNSAction::Action>, std::optional<double>, DynamicActionOptionalParameters)>("setAllowedRCodesRatio", [](std::shared_ptr<DynBlockRulesGroup>& group, LuaArray<uint8_t> rcodes, double ratio, unsigned int seconds, const std::string& reason, unsigned int blockDuration, size_t minimumNumberOfResponses, std::optional<DNSAction::Action> action, std::optional<double> warningRatio, DynamicActionOptionalParameters optionalParameters) {
+    if (group) {
+      std::unordered_set<uint8_t> allowed;
+      for (const auto rcode : rcodes) {
+        allowed.insert(rcode.second);
+      }
+      DynBlockRulesGroup::DynBlockAllowedRCodesRatioRule rule(std::move(allowed), reason, blockDuration, ratio, warningRatio ? *warningRatio : 0.0, seconds, action ? *action : DNSAction::Action::None, minimumNumberOfResponses);
+      parseDynamicActionOptionalParameters("setAllowedRCodesRatio", rule, action, optionalParameters);
+      group->setAllowedRCodesRatio(std::move(rule));
     }
   });
   // NOLINTNEXTLINE(performance-unnecessary-value-param): optional parameters cannot be passed by const reference
@@ -1138,11 +1150,13 @@ void setupLuaInspection(LuaContext& luaCtx)
                              clientIPCA = ComboAddress(clientIPStr);
                            }
                            catch (const std::exception& exp) {
-                             errlog("addDynamicBlock: Unable to parse '%s': %s", clientIPStr, exp.what());
+                             SLOG(errlog("addDynamicBlock: Unable to parse '%s': %s", clientIPStr, exp.what()),
+                                  dnsdist::logging::getTopLogger("addDynamicBlock")->error(Logr::Error, exp.what(), "Unable to parse IP address when trying to add a dynamic rule", "address", Logging::Loggable(clientIPStr), "dnsdist.lua.function", Logging::Loggable("addDynamicBlock")));
                              return;
                            }
                            catch (const PDNSException& exp) {
-                             errlog("addDynamicBlock: Unable to parse '%s': %s", clientIPStr, exp.reason);
+                             SLOG(errlog("addDynamicBlock: Unable to parse '%s': %s", clientIPStr, exp.reason),
+                                  dnsdist::logging::getTopLogger("addDynamicBlock")->error(Logr::Error, exp.reason, "Unable to parse IP address when trying to add a dynamic rule", "address", Logging::Loggable(clientIPStr), "dnsdist.lua.function", Logging::Loggable("addDynamicBlock")));
                              return;
                            }
                          }

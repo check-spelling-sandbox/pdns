@@ -32,6 +32,7 @@
 #include "validate-recursor.hh"
 #include "ratelimitedlog.hh"
 #include "ednsoptions.hh"
+#include "sanitizer.hh"
 
 #ifdef HAVE_SYSTEMD
 #include <systemd/sd-daemon.h>
@@ -283,7 +284,7 @@ unsigned int authWaitTimeMSec(const std::unique_ptr<MT_t>& mtasker)
 }
 
 /* these two functions are used by LWRes */
-LWResult::Result asendto(const void* data, size_t len, int /* flags */,
+LWResult::Result asendto(const void* data, size_t len,
                          const ComboAddress& toAddress, std::optional<ComboAddress>& localAddress, uint16_t qid, const DNSName& domain, uint16_t qtype, const std::optional<EDNSSubnetOpts>& ecs, int* fileDesc, timeval& now)
 {
 
@@ -334,10 +335,8 @@ LWResult::Result asendto(const void* data, size_t len, int /* flags */,
 
   t_fdm->addReadFD(*fileDesc, handleUDPServerResponse, pident);
   ssize_t sent = send(*fileDesc, data, len, 0);
-
-  int tmp = errno;
-
   if (sent < 0) {
+    int tmp = errno;
     t_udpclientsocks->returnSocket(*fileDesc);
     errno = tmp; // this is for logging purposes only
     return LWResult::Result::PermanentError;
@@ -348,7 +347,7 @@ LWResult::Result asendto(const void* data, size_t len, int /* flags */,
 
 static bool checkIncomingECSSource(const PacketBuffer& packet, const Netmask& subnet);
 
-LWResult::Result arecvfrom(PacketBuffer& packet, int /* flags */, const ComboAddress& fromAddr, size_t& len,
+LWResult::Result arecvfrom(PacketBuffer& packet, const ComboAddress& fromAddr, size_t& len,
                            uint16_t qid, const DNSName& domain, uint16_t qtype, int fileDesc, const std::optional<EDNSSubnetOpts>& ecs, const struct timeval& now)
 {
   static const unsigned int nearMissLimit = ::arg().asNum("spoof-nearmiss-max");
@@ -1764,7 +1763,7 @@ void startDoResolve(void* arg) // NOLINT(readability-function-cognitive-complexi
 #endif
     }
 
-    const bool intoPC = g_packetCache && !variableAnswer && !resolver.wasVariable();
+    const bool intoPC = g_packetCache && !variableAnswer && !resolver.wasVariable() && (RecursorPacketCache::s_maxEntrySize == 0 || packet.size() <= RecursorPacketCache::s_maxEntrySize);
     if (intoPC) {
       minTTL = capPacketCacheTTL(*packetWriter.getHeader(), minTTL, seenAuthSOA);
       g_packetCache->insertResponsePacket(comboWriter->d_tag, comboWriter->d_qhash, std::move(comboWriter->d_query), comboWriter->d_mdp.d_qname,
@@ -1894,6 +1893,7 @@ void startDoResolve(void* arg) // NOLINT(readability-function-cognitive-complexi
                             "answers", Logging::Loggable(ntohs(packetWriter.getHeader()->ancount)),
                             "additional", Logging::Loggable(ntohs(packetWriter.getHeader()->arcount)),
                             "outqueries", Logging::Loggable(resolver.d_outqueries),
+                            "received", Logging::Loggable(resolver.d_bytesReceived),
                             "netms", Logging::Loggable(resolver.d_totUsec / 1000.0),
                             "totms", Logging::Loggable(static_cast<double>(spentUsec) / 1000.0),
                             "throttled", Logging::Loggable(resolver.d_throttledqueries),
@@ -2124,7 +2124,10 @@ void requestWipeCaches(const DNSName& canon)
   ThreadMSG* tmsg = new ThreadMSG(); // NOLINT: pointer owner
   tmsg->func = [=] { return pleaseWipeCaches(canon, true, 0xffff); };
   tmsg->wantAnswer = false;
+  __tsan_release(tmsg);
+
   if (write(RecThreadInfo::info(0).getPipes().writeToThread, &tmsg, sizeof(tmsg)) != sizeof(tmsg)) { // NOLINT: correct sizeof
+    __tsan_acquire(tmsg);
     delete tmsg; // NOLINT: pointer owner
 
     unixDie("write to thread pipe returned wrong size or error");
@@ -2156,8 +2159,9 @@ bool matchOTConditions(const std::unique_ptr<OpenTelemetryTraceConditions>& cond
     if (condition.d_traceid_only) {
       return false;
     }
+    return true;
   }
-  return true;
+  return false;
 }
 
 bool matchOTConditions(RecEventTrace& eventTrace, const std::unique_ptr<OpenTelemetryTraceConditions>& conditions, const ComboAddress& source, const DNSName& qname, QType qtype, uint16_t qid, bool edns_option_present)
@@ -2182,10 +2186,11 @@ bool matchOTConditions(RecEventTrace& eventTrace, const std::unique_ptr<OpenTele
     if (condition.d_qnames && !condition.d_qnames->check(qname)) {
       return false;
     }
+    eventTrace.setThisOTTraceEnabled();
+    return true;
   }
 
-  eventTrace.setThisOTTraceEnabled();
-  return true;
+  return false;
 }
 
 // fromaddr: the address from which the query is coming
@@ -2293,7 +2298,7 @@ static string* doProcessUDPQuestion(const std::string& question, const ComboAddr
         ecsParsed = true;
 
         if (SyncRes::eventTraceEnabled(SyncRes::event_trace_to_ot)) {
-          bool ednsFound = pdns::trace::extractOTraceIDs(ednsOptions, EDNSOptionCode::OTTRACEIDS, otTrace);
+          bool ednsFound = pdns::trace::extractOTraceIDs(ednsOptions, EDNSOptionCode::TRACEPARENT, otTrace);
           if (!matchOTConditions(eventTrace, t_OTConditions, mappedSource, qname, qtype, ntohs(headerdata->id), ednsFound) && SyncRes::eventTraceEnabledOnly(SyncRes::event_trace_to_ot)) {
             eventTrace.setEnabled(false);
           }
@@ -2889,6 +2894,7 @@ void distributeAsyncFunction(const string& packet, const pipefunc_t& func)
   ThreadMSG* tmsg = new ThreadMSG(); // NOLINT: pointer ownership
   tmsg->func = func;
   tmsg->wantAnswer = false;
+  __tsan_release(tmsg);
 
   if (!trySendingQueryToWorker(target, tmsg)) {
     /* if this function failed but did not raise an exception, it means that the pipe
@@ -2900,6 +2906,7 @@ void distributeAsyncFunction(const string& packet, const pipefunc_t& func)
 
     if (!trySendingQueryToWorker(newTarget, tmsg)) {
       t_Counters.at(rec::Counter::queryPipeFullDrops)++;
+      __tsan_acquire(tmsg);
       delete tmsg; // NOLINT: pointer ownership
     }
   }
@@ -3013,33 +3020,31 @@ static void handleUDPServerResponse(int fileDesc, FDMultiplexer::funcparam_t& va
   pident->id = dnsheader.id;
   pident->fd = fileDesc;
 
-  if (!dnsheader.qr && g_logCommonErrors) {
-    g_slogout->info(Logr::Error, "Not taking data from question on outgoing socket", "from", Logging::Loggable(fromaddr));
+  if (!dnsheader.qr) {
+    // RFC 1035 Section 4.1.1: QR=0 means query, not response. Discard.
+    if (g_logCommonErrors) {
+      g_slogout->info(Logr::Error, "Not taking data from question on outgoing socket", "from", Logging::Loggable(fromaddr));
+    }
+    t_Counters.at(rec::Counter::unexpectedCount)++;
+    return;
   }
 
-  if (dnsheader.qdcount == 0U || // UPC, Nominum, very old BIND on FormErr, NSD
-      dnsheader.qr == 0U) { // one weird server
-    pident->domain.clear();
-    pident->type = 0;
+  try {
+    if (len > signed_sizeof_sdnsheader) {
+      pident->domain = DNSName(reinterpret_cast<const char*>(packet.data()), static_cast<int>(len), static_cast<int>(sizeof(dnsheader)), false, &pident->type); // don't copy this from above - we need to do the actual read  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+    }
+    else {
+      // len == sizeof(dnsheader), only header case
+      // We will do a full scan search later to see if we can match this reply even without a domain
+      pident->domain.clear();
+      pident->type = 0;
+    }
   }
-  else {
-    try {
-      if (len > signed_sizeof_sdnsheader) {
-        pident->domain = DNSName(reinterpret_cast<const char*>(packet.data()), static_cast<int>(len), static_cast<int>(sizeof(dnsheader)), false, &pident->type); // don't copy this from above - we need to do the actual read  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
-      }
-      else {
-        // len == sizeof(dnsheader), only header case
-        // We will do a full scan search later to see if we can match this reply even without a domain
-        pident->domain.clear();
-        pident->type = 0;
-      }
-    }
-    catch (std::exception& e) {
-      // Parse error, continue waiting for other packets
-      t_Counters.at(rec::Counter::serverParseError)++; // won't be fed to lwres.cc, so we have to increment
-      g_slogudpin->error(Logr::Warning, e.what(), "Error in packet from remote nameserver", "from", Logging::Loggable(fromaddr));
-      return;
-    }
+  catch (std::exception& e) {
+    // Parse error, continue waiting for other packets
+    t_Counters.at(rec::Counter::serverParseError)++; // won't be fed to lwres.cc, so we have to increment
+    g_slogudpin->error(Logr::Warning, e.what(), "Error in packet from remote nameserver", "from", Logging::Loggable(fromaddr));
+    return;
   }
 
   if (!pident->domain.empty()) {
@@ -3067,7 +3072,7 @@ retryWithName:
       if (pident->domain.empty() && !d_waiter.key->domain.empty() && pident->type == 0 && d_waiter.key->type != 0 && pident->id == d_waiter.key->id && d_waiter.key->remote == pident->remote) {
         pident->domain = d_waiter.key->domain;
         pident->type = d_waiter.key->type;
-        goto retryWithName; // note that this only passes on an error, lwres will still reject the packet NOLINT(cppcoreguidelines-avoid-goto)
+        goto retryWithName; // note that this only passes on an error, lwres still should reject the packet NOLINT(cppcoreguidelines-avoid-goto)
       }
     }
     t_Counters.at(rec::Counter::unexpectedCount)++; // if we made it here, it really is an unexpected answer

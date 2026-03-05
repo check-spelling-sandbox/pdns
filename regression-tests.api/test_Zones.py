@@ -275,9 +275,38 @@ class AuthZones(ZonesApiTestCase, AuthZonesHelperMixin):
         self.assertEqual(data['catalog'], "default-catalog.example.com.")
 
     def test_create_zone_default_soa_edit_api(self):
+        """Test that zones created without soa_edit_api get the configured default-soa-edit-api value."""
         name, payload, data = self.create_zone()
         print(data)
-        self.assertEqual(data['soa_edit_api'], 'DEFAULT')
+        # default-soa-edit-api is set to EPOCH in the test config
+        self.assertEqual(data['soa_edit_api'], 'EPOCH')
+
+    def test_create_zone_override_soa_edit_api(self):
+        """Test that explicitly setting soa_edit_api overrides the default."""
+        name, payload, data = self.create_zone(soa_edit_api='SOA-EDIT-INCREASE')
+        print(data)
+        self.assertEqual(data['soa_edit_api'], 'SOA-EDIT-INCREASE')
+
+    def test_create_zone_empty_soa_edit_api(self):
+        """Test that explicitly setting soa_edit_api to empty does not use default."""
+        name, payload, data = self.create_zone(soa_edit_api='')
+        print(data)
+        self.assertEqual(data['soa_edit_api'], '')
+
+    def test_update_zone_does_not_override_soa_edit_api(self):
+        """Test that updating a zone does not change existing soa_edit_api to default."""
+        # Create zone with empty soa_edit_api
+        name, payload, data = self.create_zone(soa_edit_api='')
+        self.assertEqual(data['soa_edit_api'], '')
+        # Update zone without specifying soa_edit_api - it should remain empty
+        update_payload = {
+            'kind': 'Master',
+            'masters': ['192.0.2.1']
+        }
+        self.put_zone(name, update_payload)
+        data = self.get_zone(name)
+        # Verify soa_edit_api was NOT changed to the default value
+        self.assertEqual(data['soa_edit_api'], '')
 
     def test_create_zone_exists(self):
         name, payload, data = self.create_zone()
@@ -693,7 +722,8 @@ class AuthZones(ZonesApiTestCase, AuthZonesHelperMixin):
         Create a zone, then set and unset "dnssec", then check if the serial was increased
         after every step
         """
-        name, payload, data = self.create_zone()
+        # Use soa_edit_api='DEFAULT' to get predictable INCEPTION-INCREMENT serials
+        name, payload, data = self.create_zone(soa_edit_api='DEFAULT')
 
         soa_serial = get_first_rec(data, name, 'SOA')['content'].split(' ')[2]
         self.assertEqual(soa_serial[-2:], '01')
@@ -1347,6 +1377,49 @@ $NAME$  1D  IN  SOA ns1.example.org. hostmaster.example.org. (
         self.assertEqual(r.status_code, 422)
         self.assert_in_json_error("Exactly one record should be provided", r.json())
 
+    def test_zone_rr_bogus_update_4(self):
+        name, payload, zone = self.create_zone()
+        # rrset with invalid characters which are not processed by parseRFC1035CharString
+        rrset = {
+            'changetype': 'replace',
+            'name': 'a.'+name,
+            'type': 'A',
+            'ttl': 3600,
+            'records': [
+                {
+                    "content": "(127.0.0.1)",
+                    "disabled": False
+                }
+            ]
+        }
+        payload = {'rrsets': [rrset]}
+        r = self.session.patch(
+            self.url("/api/v1/servers/localhost/zones/" + name),
+            data=json.dumps(payload),
+            headers={'content-type': 'application/json'})
+        self.assertEqual(r.status_code, 422)
+        self.assert_in_json_error("Invalid character '(' in record content", r.json())
+        # rrset with empty contents
+        rrset = {
+            'changetype': 'replace',
+            'name': 'a.'+name,
+            'type': 'A',
+            'ttl': 3600,
+            'records': [
+                {
+                    "content": "",
+                    "disabled": False
+                }
+            ]
+        }
+        payload = {'rrsets': [rrset]}
+        r = self.session.patch(
+            self.url("/api/v1/servers/localhost/zones/" + name),
+            data=json.dumps(payload),
+            headers={'content-type': 'application/json'})
+        self.assertEqual(r.status_code, 422)
+        self.assert_in_json_error("missing field at the end of record content ''", r.json())
+
     def test_zone_rr_update(self):
         name, payload, zone = self.create_zone()
         # do a replace (= update)
@@ -1375,6 +1448,34 @@ $NAME$  1D  IN  SOA ns1.example.org. hostmaster.example.org. (
         # verify that (only) the new record is there
         data = self.get_zone(name)
         self.assertCountEqual(get_rrset(data, name, 'NS')['records'], rrset['records'])
+
+    def test_zone_rr_update_lua(self):
+        # Important to test with LUA records, as their contents should not be
+        # normalized in any way.
+        name, payload, zone = self.create_zone()
+        recname = 'lua.' + name
+        # do a replace (= update)
+        rrset = {
+            'changetype': 'replace',
+            'name': recname,
+            'type': 'LUA',
+            'ttl': 3600,
+            'records': [
+                {
+                    "content": "TXT \"; return 'PowerDNS'\"",
+                    "disabled": False
+                }
+            ]
+        }
+        payload = {'rrsets': [rrset]}
+        r = self.session.patch(
+            self.url("/api/v1/servers/localhost/zones/" + name),
+            data=json.dumps(payload),
+            headers={'content-type': 'application/json'})
+        self.assert_success(r)
+        # verify that (only) the new record is there
+        data = self.get_zone(name)
+        self.assertEqual(get_rrset(data, recname, 'LUA')['records'], rrset['records'])
 
     def test_zone_rr_update_mx(self):
         # Important to test with MX records, as they have a priority field, which must end up in the content field.
@@ -1676,6 +1777,48 @@ $NAME$  1D  IN  SOA ns1.example.org. hostmaster.example.org. (
         # verify that the zone contents did not change
         data2 = self.get_zone(name)
         self.assertEqual(get_rrset(data, 'a.'+name), get_rrset(data2, 'a.'+name))
+
+    def test_zone_rr_bogus_extend(self):
+        name, payload, zone = self.create_zone()
+        # add a single record with extend
+        rrset = {
+            'changetype': 'extend',
+            'name': 'txt.'+name,
+            'type': 'TXT',
+            'ttl': 3600,
+            'records': [
+                {
+                    "content": "\"hello\"",
+                    "disabled": False
+                }
+            ]
+        }
+        payload = {'rrsets': [rrset]}
+        r = self.session.patch(
+            self.url("/api/v1/servers/localhost/zones/" + name),
+            data=json.dumps(payload),
+            headers={'content-type': 'application/json'})
+        self.assert_success(r)
+        # try and add another record with a mismatching ttl
+        rrset2 = {
+            'changetype': 'extend',
+            'name': 'txt.'+name,
+            'type': 'TXT',
+            'ttl': 1234,
+            'records': [
+                {
+                    "content": "\"hello again\"",
+                    "disabled": False
+                }
+            ]
+        }
+        payload2 = {'rrsets': [rrset2]}
+        r = self.session.patch(
+            self.url("/api/v1/servers/localhost/zones/" + name),
+            data=json.dumps(payload2),
+            headers={'content-type': 'application/json'})
+        self.assertEqual(r.status_code, 422)
+        self.assert_in_json_error('uses a different TTL value than the remainder of the RRset', r.json())
 
     def test_zone_rr_update_with_prune(self):
         name, payload, zone = self.create_zone()

@@ -1,19 +1,21 @@
 #!/usr/bin/env python
 
-import dns
 import selectors
 import socket
 import ssl
-import requests
 import struct
 import sys
 import threading
 import time
 
+import dns
+import requests
+
+from dnsdistdohtests import DNSDistDOHTest
 from dnsdisttests import DNSDistTest, pickAvailablePort
 from proxyprotocol import ProxyProtocol
-from proxyprotocolutils import ProxyProtocolUDPResponder, ProxyProtocolTCPResponder
-from dnsdistdohtests import DNSDistDOHTest
+from proxyprotocolutils import (ProxyProtocolTCPResponder,
+                                ProxyProtocolUDPResponder)
 
 # Python2/3 compatibility hacks
 try:
@@ -375,6 +377,7 @@ class TestProxyProtocol(ProxyProtocolTest):
 
       new_conn_before = self.getServerStats()[0]['tcpNewConnections']
       reused_conn_before = self.getServerStats()[0]['tcpReusedConnections']
+      max_conn_before = self.getServerStats()[0]['tcpMaxConcurrentConnections']
 
       conn = self.openTCPConnection(2.0)
       data = query.to_wire()
@@ -406,7 +409,10 @@ class TestProxyProtocol(ProxyProtocolTest):
       server = self.getServerStats()[0]
       self.assertEqual(server['tcpNewConnections'], new_conn_before + 1)
       self.assertEqual(server['tcpReusedConnections'], reused_conn_before + 9)
-      self.assertEqual(server['tcpMaxConcurrentConnections'], 1)
+      # we can only check that we did not open more than one new connection
+      # compared to the connections that existed before, because connections
+      # triggered by a different test can still be around
+      self.assertLessEqual(server['tcpMaxConcurrentConnections'], max_conn_before + 1)
 
     def testProxyTCPSeveralQueriesWithRandomTLVOnSameConnection(self):
       """
@@ -465,6 +471,35 @@ class TestProxyProtocol(ProxyProtocolTest):
       # hold a shared reference to the previous connection. It will be released when we come back to the calling
       # function, but for a short time we will have two concurrent connections.
       self.assertLessEqual(server['tcpMaxConcurrentConnections'], current_conns_before + 2)
+
+class TestProxyProtocolTraceParent(TestProxyProtocol):
+    # dnsdist adds a TRACEPARENT EDNS option.
+    # Test to make sure we don't break the DNS protocol
+    _config_template = """
+    setOpenTelemetryTracing(true)
+    newServer{address="127.0.0.1:%d", useProxyProtocol=true}
+
+    webserver("127.0.0.1:%d")
+    setWebserverConfig{password="%s", apiKey="%s"}
+
+    function addValues(dq)
+      local values = { [0]="foo", [42]="bar" }
+      dq:setProxyProtocolValues(values)
+      return DNSAction.None
+    end
+
+    local counter = 1
+    function addRandomValue(dq)
+      dq:addProxyProtocolValue(0xEE, tostring(counter))
+      counter = counter + 1
+      return DNSAction.None
+    end
+
+    addAction(AllRule(), SetTraceAction(true, {sendDownstreamTraceparent=true}), {name="Enable tracing"})
+    addAction("values-lua.proxy.tests.powerdns.com.", LuaAction(addValues))
+    addAction("values-action.proxy.tests.powerdns.com.", SetProxyProtocolValuesAction({ ["1"]="dnsdist", ["255"]="proxy-protocol"}))
+    addAction("random-values.proxy.tests.powerdns.com.", LuaAction(addRandomValue))
+    """
 
 class TestProxyProtocolIncoming(ProxyProtocolTest):
     """
@@ -1220,16 +1255,13 @@ class TestDOHWithOutgoingProxyProtocol(DNSDistDOHTest):
     _caCert = 'ca.pem'
     _dohWithNGHTTP2ServerPort = pickAvailablePort()
     _dohWithNGHTTP2BaseURL = ("https://%s:%d/dns-query" % (_serverName, _dohWithNGHTTP2ServerPort))
-    _dohWithH2OServerPort = pickAvailablePort()
-    _dohWithH2OBaseURL = ("https://%s:%d/dns-query" % (_serverName, _dohWithH2OServerPort))
     _proxyResponderPort = proxyResponderPort
     _config_template = """
     newServer{address="127.0.0.1:%d", useProxyProtocol=true}
     addDOHLocal("127.0.0.1:%d", "%s", "%s", { '/dns-query' }, { trustForwardedForHeader=true, library='nghttp2' })
-    addDOHLocal("127.0.0.1:%d", "%s", "%s", { '/dns-query' }, { trustForwardedForHeader=true, library='h2o' })
     setACL( { "::1/128", "127.0.0.0/8" } )
     """
-    _config_params = ['_proxyResponderPort', '_dohWithNGHTTP2ServerPort', '_serverCert', '_serverKey', '_dohWithH2OServerPort', '_serverCert', '_serverKey']
+    _config_params = ['_proxyResponderPort', '_dohWithNGHTTP2ServerPort', '_serverCert', '_serverKey']
 
     def testTruncation(self):
         """
@@ -1250,7 +1282,7 @@ class TestDOHWithOutgoingProxyProtocol(DNSDistDOHTest):
                                     '127.0.0.1')
         response.answer.append(rrset)
 
-        for (port,url) in [(self._dohWithNGHTTP2ServerPort, self._dohWithNGHTTP2BaseURL), (self._dohWithH2OServerPort, self._dohWithH2OBaseURL)]:
+        for (port,url) in [(self._dohWithNGHTTP2ServerPort, self._dohWithNGHTTP2BaseURL)]:
           # first response is a TC=1
           tcResponse = dns.message.make_response(query)
           tcResponse.flags |= dns.flags.TC
@@ -1302,7 +1334,7 @@ class TestDOHWithOutgoingProxyProtocol(DNSDistDOHTest):
                                     '127.0.0.1')
         response.answer.append(rrset)
 
-        for (port,url) in [(self._dohWithNGHTTP2ServerPort, self._dohWithNGHTTP2BaseURL), (self._dohWithH2OServerPort, self._dohWithH2OBaseURL)]:
+        for (port,url) in [(self._dohWithNGHTTP2ServerPort, self._dohWithNGHTTP2BaseURL)]:
           # the query should be dropped
           (receivedQuery, receivedResponse) = self.sendDOHQuery(port, self._serverName, url, query, caFile=self._caCert, customHeaders=['x-forwarded-for: [::1]:8080'], useQueue=False)
           self.assertFalse(receivedQuery)

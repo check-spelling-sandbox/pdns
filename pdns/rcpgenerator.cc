@@ -124,6 +124,13 @@ void RecordTextReader::xfrTime(uint32_t &val)
     throw RecordTextException("unable to parse '"+std::to_string(itmp)+"' into a valid time at position "+std::to_string(d_pos)+" in '"+d_string+"'");
   }
 
+  // Note tm_mon is still in 1..12 range at this point
+  if (tm.tm_sec < 0 || tm.tm_sec > 60 || tm.tm_min < 0 || tm.tm_min > 59 ||
+      tm.tm_hour < 0 || tm.tm_hour > 23 || tm.tm_mday < 0 || tm.tm_mday > 31 ||
+      tm.tm_mon < 1 || tm.tm_mon > 12) {
+    throw RecordTextException("invalid time specification '"+std::to_string(itmp)+"' at position "+std::to_string(d_pos)+" in '"+d_string+"'");
+  }
+
   tm.tm_year-=1900;
   tm.tm_mon-=1;
   // coverity[store_truncates_time_t]
@@ -396,6 +403,9 @@ void RecordTextReader::xfrSvcParamKeyVals(set<SvcParam>& val) // NOLINT(readabil
         string value;
         xfrRFC1035CharString(value);
         size_t len = key == SvcParam::ipv4hint ? 4 : 16;
+        if (value.empty()) {
+          throw RecordTextException("value is required for SVC Param " + k);
+        }
         if (value.size() % len != 0) {
           throw RecordTextException(k + " in generic format has wrong number of bytes");
         }
@@ -493,6 +503,9 @@ void RecordTextReader::xfrSvcParamKeyVals(set<SvcParam>& val) // NOLINT(readabil
       if (generic) {
         string v;
         xfrRFC1035CharString(v);
+        if (v.empty()) {
+          throw RecordTextException("value is required for SVC Param " + k);
+        }
         if (v.length() != 2) {
           throw RecordTextException("port in generic format has the wrong length, expected 2, got " + std::to_string(v.length()));
         }

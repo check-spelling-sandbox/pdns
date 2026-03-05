@@ -164,7 +164,7 @@ Listen Sockets
   * ``idleTimeout=30``: int - Set the idle timeout, in seconds.
   * ``ciphers``: str - The TLS ciphers to use, in OpenSSL format. Ciphers for TLS 1.3 must be specified via ``ciphersTLS13``.
   * ``ciphersTLS13``: str - The TLS ciphers to use for TLS 1.3, in OpenSSL format.
-  * ``serverTokens``: str - The content of the Server: HTTP header returned by dnsdist. The default is "h2o/dnsdist" when ``h2o`` is used, "nghttp2-<version>/dnsdist" when ``nghttp2`` is.
+  * ``serverTokens``: str - The content of the Server: HTTP header returned by dnsdist. The default is "nghttp2-<version>/dnsdist" when ``nghttp2`` is used.
   * ``customResponseHeaders={}``: table - Set custom HTTP header(s) returned by dnsdist.
   * ``ocspResponses``: list - List of files containing OCSP responses, in the same order than the certificates and keys, that will be used to provide OCSP stapling responses.
   * ``minTLSVersion``: str - Minimum version of the TLS protocol to support. Possible values are 'tls1.0', 'tls1.1', 'tls1.2' and 'tls1.3'. Default is to require at least TLS 1.0.
@@ -187,7 +187,7 @@ Listen Sockets
   * ``keepIncomingHeaders``: bool - Whether to retain the incoming headers in memory, to be able to use :func:`HTTPHeaderRule` or :meth:`DNSQuestion.getHTTPHeaders`. Default is false. Before 1.8.0 the headers were always kept in-memory.
   * ``additionalAddresses``: list - List of additional addresses (with port) to listen on. Using this option instead of creating a new frontend for each address avoids the creation of new thread and Frontend objects, reducing the memory usage. The drawback is that there will be a single set of metrics for all addresses.
   * ``ignoreTLSConfigurationErrors=false``: bool - Ignore TLS configuration errors (such as invalid certificate path) and just issue a warning instead of aborting the whole process
-  * ``library``: str - Which underlying HTTP2 library should be used, either h2o or nghttp2. Until 1.9.0 only h2o was available, but the use of this library is now deprecated as it is no longer maintained. nghttp2 is the new default since 1.9.0.
+  * ``library``: str - Which underlying HTTP2 library should be used, only ``nghttp2`` is supported.
   * ``ktls=false``: bool - Whether to enable the experimental kernel TLS support on Linux, if both the kernel and the OpenSSL library support it. Default is false.
   * ``tlsAsyncMode=false``: bool - Whether to enable experimental asynchronous TLS I/O operations if the ``nghttp2`` library is used, ``OpenSSL`` is used as the TLS implementation and an asynchronous capable SSL engine (or provider) is loaded. See also :func:`loadTLSEngine` or :func:`loadTLSProvider` to load the engine (or provider).
   * ``readAhead``: bool - When the TLS provider is set to OpenSSL, whether we tell the library to read as many input bytes as possible, which leads to better performance by reducing the number of syscalls. Default is true.
@@ -197,6 +197,9 @@ Listen Sockets
 .. function:: addDOH3Local(address, certFile(s), keyFile(s) [, options])
 
   .. versionadded:: 1.9.0
+
+  .. versionchanged:: 2.1.0
+    The default congestion algorithm used to be ``reno`` and is now ``cubic``.
 
   Listen on the specified address and UDP port for incoming DNS over HTTP3 connections, presenting the specified X.509 certificate. See :doc:`../advanced/tls-certificates-management` for details about the handling of TLS certificates and keys.
   More information is available in :doc:`../guides/dns-over-http3`.
@@ -215,12 +218,15 @@ Listen Sockets
   * ``idleTimeout=5``: int - Set the idle timeout, in seconds.
   * ``internalPipeBufferSize=0``: int - Set the size in bytes of the internal buffer of the pipes used internally to pass queries and responses between threads. Requires support for ``F_SETPIPE_SZ`` which is present in Linux since 2.6.35. The actual size might be rounded up to a multiple of a page size. 0 means that the OS default size is used. The default value is 0, except on Linux where it is 1048576 since 1.6.0.
   * ``maxInFlight=65535``: int - Maximum number of in-flight queries. The default is 0, which disables out-of-order processing.
-  * ``congestionControlAlgo="reno"``: str - The congestion control algorithm to be chosen between ``reno``, ``cubic`` and ``bbr``.
+  * ``congestionControlAlgo="cubic"``: str - The congestion control algorithm to be chosen between ``reno``, ``cubic`` and ``bbr``.
   * ``keyLogFile``: str - Write the TLS keys in the specified file so that an external program can decrypt TLS exchanges, in the format described in https://developer.mozilla.org/en-US/docs/Mozilla/Projects/NSS/Key_Log_Format.
 
 .. function:: addDOQLocal(address, certFile(s), keyFile(s) [, options])
 
   .. versionadded:: 1.9.0
+
+  .. versionchanged:: 2.1.0
+    The default congestion algorithm used to be ``reno`` and is now ``cubic``.
 
   Listen on the specified address and UDP port for incoming DNS over QUIC connections, presenting the specified X.509 certificate.
   See :doc:`../advanced/tls-certificates-management` for details about the handling of TLS certificates and keys.
@@ -240,7 +246,7 @@ Listen Sockets
   * ``idleTimeout=5``: int - Set the idle timeout, in seconds.
   * ``internalPipeBufferSize=0``: int - Set the size in bytes of the internal buffer of the pipes used internally to pass queries and responses between threads. Requires support for ``F_SETPIPE_SZ`` which is present in Linux since 2.6.35. The actual size might be rounded up to a multiple of a page size. 0 means that the OS default size is used. The default value is 0, except on Linux where it is 1048576 since 1.6.0.
   * ``maxInFlight=65535``: int - Maximum number of in-flight queries. The default is 0, which disables out-of-order processing.
-  * ``congestionControlAlgo="reno"``: str - The congestion control algorithm to be chosen between ``reno``, ``cubic`` and ``bbr``.
+  * ``congestionControlAlgo="cubic"``: str - The congestion control algorithm to be chosen between ``reno``, ``cubic`` and ``bbr``.
   * ``keyLogFile``: str - Write the TLS keys in the specified file so that an external program can decrypt TLS exchanges, in the format described in https://developer.mozilla.org/en-US/docs/Mozilla/Projects/NSS/Key_Log_Format.
 
 .. function:: addTLSLocal(address, certFile(s), keyFile(s) [, options])
@@ -467,6 +473,9 @@ Webserver configuration
   .. versionchanged:: 1.8.0
     ``apiRequiresAuthentication``, ``dashboardRequiresAuthentication`` optional parameters added.
 
+  .. versionchanged:: 2.1.0
+    ``prometheusAddInstanceLabel`` optional parameter added.
+
   Setup webserver configuration. See :func:`webserver` and :doc:`../guides/webserver`.
 
   :param table options: A table with key: value pairs with webserver options.
@@ -480,6 +489,7 @@ Webserver configuration
   * ``apiRequiresAuthentication``: bool - Whether access to the API (/api endpoints) require a valid API key. Defaults to true.
   * ``dashboardRequiresAuthentication``: bool - Whether access to the internal dashboard requires a valid password. Defaults to true.
   * ``statsRequireAuthentication``: bool - Whether access to the statistics (/metrics and /jsonstat endpoints) require a valid password or API key. Defaults to true.
+  * ``prometheusAddInstanceLabel``: bool - Whether to add an instance label to every metric. The value of this label is set by :func:`setServerID`. Defaults to false.
   * ``maxConcurrentConnections``: int - The maximum number of concurrent web connections, or 0 which means an unlimited number. Defaults to 100.
   * ``hashPlaintextCredentials``: bool - Whether passwords and API keys provided in plaintext should be hashed during startup, to prevent the plaintext versions from staying in memory. Doing so increases significantly the cost of verifying credentials. Defaults to false.
 
@@ -621,6 +631,9 @@ Ringbuffers
 
   .. versionadded:: 1.8.0
 
+  .. versionchanged:: 2.1.0
+    ``samplingRate`` option added.
+
   Set the rings buffers configuration
 
   :param table options: A table with key: value pairs with options.
@@ -628,6 +641,7 @@ Ringbuffers
   Options:
 
   * ``lockRetries``: int - Set the number of shards to attempt to lock without blocking before giving up and simply blocking while waiting for the next shard to be available. Default to 5 if there is more than one shard, 0 otherwise
+  * ``samplingRate``: int - Set a sampling rate ``S`` so that only 1 out of ``S`` queries and responses are inserted into the rings, to keep a longer history without consuming too much memory while also being able to process it quickly. Default is 0 which means there is no sampling and all entries are inserted
   * ``recordQueries``: boolean - Whether to record queries in the ring buffers. Default is true. Note that :func:`grepq`, several top* commands (:func:`topClients`, :func:`topQueries`, ...) and the :doc:`Dynamic Blocks <../guides/dynblocks>` require this to be enabled.
   * ``recordResponses``: boolean - Whether to record responses in the ring buffers. Default is true. Note that :func:`grepq`, several top* commands (:func:`topResponses`, :func:`topSlow`, ...) and the :doc:`Dynamic Blocks <../guides/dynblocks>` require this to be enabled.
 
@@ -891,6 +905,61 @@ A server object returned by :func:`getServer` can be manipulated with these func
     Administratively set the server in a ``DOWN`` state.
     The server will not receive queries and the health checks are disabled.
 
+  .. method:: Server:setHealthCheckResponseValidator(validator)
+
+    .. versionadded:: 2.1.0
+
+    Set a Lua function to be called to validate DNS packets received in response to health-check queries.
+    The function will receive a class:`DNSResponse` object and return a boolean indicating whether the response
+    is valid (`true`) or not (`false`).
+
+    .. code-block:: lua
+
+      function myHealthCheckValidationFunction(dr)
+        local rcode = dr.rcode
+        if rcode ~= DNSRCode.NOERROR then
+          return false
+        end
+
+        local packet = dr:getContent()
+        local overlay = newDNSPacketOverlay(packet)
+
+        if overlay.qname:toString() ~= "expected.name." then
+          return false
+        end
+
+        if overlay.qtype ~= DNSQType.A then
+          return false
+        end
+
+        local count = overlay:getRecordsCountInSection(1)
+        if count ~= 1 then
+          return false
+        end
+
+        local record = overlay:getRecord(0)
+        if record.contentLength ~= 4 then
+          return false
+        end
+
+        local offset = record.contentOffset
+        local content = parseARecord(packet, record)
+        if content == nil then
+          return false
+        end
+
+        if content:toString() ~= '127.0.0.2' then
+          return false
+        end
+
+        return true
+      end
+
+      local backend = newServer{address="192.0.2.1"}
+      backend:setHealthCheckResponseValidator(myHealthCheckValidationFunction)
+
+    :param function validator: Function to be called
+
   .. method:: Server:setLazyAuto([status])
 
     .. versionadded:: 1.8.0
@@ -989,7 +1058,7 @@ Servers that are not assigned to a specific pool get assigned to the default poo
 
   .. method:: ServerPool:getZeroScope()
 
-    .. versionadded:: 2.0.1
+    .. versionadded:: 2.1.0
 
     Whether dnsdist will enable the EDNS Client Subnet :doc:`../advanced/zero-scope` feature when looking up into the cache,
     when all servers from this pool are down.
@@ -1007,7 +1076,7 @@ Servers that are not assigned to a specific pool get assigned to the default poo
 
   .. method:: ServerPool:setZeroScope(enabled)
 
-    .. versionadded:: 2.0.1
+    .. versionadded:: 2.1.0
 
     Set to false if dnsdist should disable the EDNS Client Subnet :doc:`../advanced/zero-scope` feature when looking up into the cache,
     when all servers from this pool are down.
@@ -1398,12 +1467,19 @@ Status, Statistics and More
 
   .. versionadded:: 1.9.0
 
-  Set whether log messages should be in a structured-logging-like format. This is turned off by default.
-  The resulting format looks like this (when timestamps are enabled via ``--log-timestamps`` and with ``levelPrefix="prio"`` and ``timeFormat="ISO8601"``)::
+  .. versionchanged:: 2.1.0
+    The ``backend`` option has been added.
+    The ``setInstanceFromServerID`` option has been added
+    The ``levelPrefix`` option has no longer any effect because it was confusing. The log level is now always logged as ``level`` and the syslog priority, if any, as ``priority`` in all backends except the default one where it is named ``prio``
+    Structured logging is now enabled by default.
 
-    ts="2023-11-06T12:04:58+0100" prio="Info" msg="Added downstream server 127.0.0.1:53"
+  Set whether log messages should be in structured-logging format. This is enabled by default since 2.1.0. See :doc:`../advanced/structured-logging-dictionary` for more details.
 
-  And with ``levelPrefix="level"`` and ``timeFormat="numeric"``)::
+  The resulting format looks like this (when timestamps are enabled via ``--log-timestamps`` and ``timeFormat="ISO8601"``)::
+
+    ts="2023-11-06T12:04:58+0100" level="Info" msg="Added downstream server 127.0.0.1:53"
+
+  And with ``timeFormat="numeric"`` instead)::
 
     ts="1699268815.133" level="Info" msg="Added downstream server 127.0.0.1:53"
 
@@ -1412,8 +1488,16 @@ Status, Statistics and More
 
   Options:
 
-  * ``levelPrefix=prefix``: string - Set the prefix for the log level. Default is ``prio``.
+  * ``backend``: string - The backend used for structured logging output, see below. Added in 2.1.0.
   * ``timeFormat=format``: string - Set the time format. Supported values are ``ISO8601`` and ``numeric``. Default is ``numeric``.
+  * ``levelPrefix=prefix``: string - Set the prefix for the log level. Default is ``prio``. No longer supported as of 2.1.0.
+  * ``setInstanceFromServerID=false``: bool - Add the "instance" field with the value of the server ID (set with :func:`setServerID`) to each log line. Added in 2.1.0.
+
+ Available backends:
+
+ * ``default``: use the traditional logging system to output structured logging information.
+ * ``systemd-journal``: use ``systemd-journal``. When using this backend, provide ``-o verbose`` or simular output option to ``journalctl`` to view the full information.
+ * ``json``: JSON objects are written to the standard error stream.
 
 .. function:: setOpenTelemetryTracing(value)
 
@@ -1825,11 +1909,32 @@ faster than the existing rules.
 
   Represents a group of dynamic block rules.
 
+  .. method:: DynBlockRulesGroup:setAllowedRCodesRatio(rcodes, ratio, seconds, reason, blockingTime, minimumNumberOfResponses [, action [, warningRate, [options]]])
+
+    .. versionadded:: 2.1.0
+
+    Adds a rate-limiting rule for the ratio of responses with a code not present in ``rcodes`` over the total number of responses for a given client.
+
+    :param list of int rcodes: The response codes that are allowed and won't count towards the ratio
+    :param float ratio: Ratio of responses per second with a not allowed rcode over the total number of responses for this client to exceed
+    :param int seconds: Number of seconds the ratio has been exceeded
+    :param string reason: The message to show next to the blocks
+    :param int blockingTime: The number of seconds this block to expire
+    :param int minimumNumberOfResponses: How many total responses is required for this rule to apply
+    :param int action: The action to take when the dynamic block matches, see :ref:`DNSAction <DNSAction>`. (default to the one set with :func:`setDynBlocksAction`)
+    :param float warningRatio: If set to a non-zero value, the ratio above which a warning message will be issued and a no-op block inserted
+    :param table options: A table with key: value pairs, see below for supported values.
+
+    Options:
+
+    * ``tagName``: str - If ``action`` is set to ``DNSAction.SetTag``, the name of the tag that will be set
+    * ``tagValue``: str - If ``action`` is set to ``DNSAction.SetTag``, the value of the tag that will be set. Default is an empty string
+
   .. method:: DynBlockRulesGroup:setCacheMissRatio(ratio, seconds, reason, blockingTime, minimumNumberOfResponses, minimumGlobalCacheHitRatio, [, action [, warningRate, [options]]])
 
     .. versionadded:: 1.9.0
 
-    .. versionadded:: 2.0.0
+    .. versionchanged:: 2.0.0
       ``options`` optional parameter added
 
     Adds a rate-limiting rule for the ratio of cache-misses responses over the total number of responses for a given client.
@@ -1854,6 +1959,9 @@ faster than the existing rules.
 
     .. versionadded:: 1.7.0
 
+    .. versionchanged:: 2.1.0
+      Queries and corresponding responses coming from an excluded (see :meth:`DynBlockRulesGroup::excludeRange`) client no longer count towards the thresholds for the aggregated subnet the client belongs to.
+
     Set the number of bits to keep in the IP address when inserting a block. The default is 32 for IPv4 and 128 for IPv6, meaning
     that only the exact address is blocked, but in some scenarios it might make sense to block a whole /64 IPv6 range instead of a
     single address, for example.
@@ -1867,7 +1975,7 @@ faster than the existing rules.
 
   .. method:: DynBlockRulesGroup:setQueryRate(rate, seconds, reason, blockingTime [, action [, warningRate, [options]]])
 
-    .. versionadded:: 2.0.0
+    .. versionchanged:: 2.0.0
       ``options`` optional parameter added
 
     Adds a query rate-limiting rule, equivalent to:
@@ -1932,7 +2040,7 @@ faster than the existing rules.
 
     .. versionadded:: 1.5.0
 
-    .. versionadded:: 2.0.0
+    .. versionchanged:: 2.0.0
       ``options`` optional parameter added
 
     .. note::
@@ -2015,7 +2123,7 @@ faster than the existing rules.
     .. versionchanged:: 1.9.0
       This visitor function can now optionally return an additional integer which will be set as the ``action`` for the dynamic block.
 
-    .. versionadded:: 2.0.0
+    .. versionchanged:: 2.0.0
       ``options`` optional parameter added
 
     Set a Lua visitor function that will be called for each label of every domain seen in queries and responses. The function receives a :class:`StatNode` object representing the stats of the parent, a :class:`StatNodeStats` one with the stats of the current label and a second :class:`StatNodeStats` with the stats of the current node plus all its children.
@@ -2041,7 +2149,7 @@ faster than the existing rules.
 
     .. versionadded:: 1.4.0
 
-    .. versionadded:: 2.0.0
+    .. versionchanged:: 2.0.0
       ``options`` optional parameter added
 
     Set a Lua FFI visitor function that will be called for each label of every domain seen in queries and responses. The function receives a `dnsdist_ffi_stat_node_t` object containing the stats of the parent, a second one with the stats of the current label and one with the stats of the current node plus all its children.

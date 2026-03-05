@@ -24,27 +24,22 @@
 #include "rec-main.hh"
 
 #include "aggressive_nsec.hh"
-#include "capabilities.hh"
 #include "arguments.hh"
-#include "dns_random.hh"
-#include "rec_channel.hh"
-#include "rec-tcpout.hh"
-#include "version.hh"
-#include "query-local-address.hh"
-#include "validate-recursor.hh"
-#include "pubsuffix.hh"
-#include "opensslsigners.hh"
-#include "ws-recursor.hh"
-#include "rec-taskqueue.hh"
-#include "secpoll-recursor.hh"
-#include "logging.hh"
+#include "capabilities.hh"
 #include "dnssec.hh"
+#include "opensslsigners.hh"
+#include "pubsuffix.hh"
+#include "query-local-address.hh"
 #include "rec-rust-lib/cxxsettings.hh"
-#include "json.hh"
+#include "rec-snmp.hh"
 #include "rec-system-resolve.hh"
+#include "rec-taskqueue.hh"
+#include "rec-tcpout.hh"
 #include "root-dnssec.hh"
-#include "ratelimitedlog.hh"
-#include "rec-rust-lib/rust/web.rs.h"
+#include "secpoll-recursor.hh"
+#include "threadname.hh"
+#include "version.hh"
+#include "ws-recursor.hh"
 
 #ifdef NOD_ENABLED
 #include "nod.hh"
@@ -52,9 +47,6 @@
 
 #ifdef HAVE_LIBSODIUM
 #include <sodium.h>
-
-#include <cstddef>
-#include <utility>
 #endif
 
 #ifdef HAVE_SYSTEMD
@@ -98,7 +90,6 @@ uint32_t g_disthashseed;
 bool g_useIncomingECS;
 static shared_ptr<NetmaskGroup> g_initialProxyProtocolACL;
 static shared_ptr<std::set<ComboAddress>> g_initialProxyProtocolExceptions;
-static shared_ptr<OpenTelemetryTraceConditions> g_initialOpenTelemetryConditions; // XXX shared ptr needed?
 std::optional<ComboAddress> g_dns64Prefix{std::nullopt};
 DNSName g_dns64PrefixReverse;
 unsigned int g_maxChainLength;
@@ -106,6 +97,7 @@ LockGuarded<std::shared_ptr<SyncRes::domainmap_t>> g_initialDomainMap; // new th
 LockGuarded<std::shared_ptr<NetmaskGroup>> g_initialAllowFrom; // new thread needs to be setup with this
 LockGuarded<std::shared_ptr<NetmaskGroup>> g_initialAllowNotifyFrom; // new threads need this to be setup
 LockGuarded<std::shared_ptr<notifyset_t>> g_initialAllowNotifyFor; // new threads need this to be setup
+LockGuarded<std::shared_ptr<OpenTelemetryTraceConditions>> g_initialOpenTelemetryConditions; // new threads need this to be setup
 static time_t s_statisticsInterval;
 static std::atomic<uint32_t> s_counter;
 int g_argc;
@@ -129,7 +121,6 @@ std::vector<RecThreadInfo> RecThreadInfo::s_threadInfos;
 std::unique_ptr<ProxyMapping> g_proxyMapping; // new threads needs this to be setup
 thread_local std::unique_ptr<ProxyMapping> t_proxyMapping;
 
-std::unique_ptr<OpenTelemetryTraceConditions> g_OTConditions; // new threads needs this to be setup
 thread_local std::unique_ptr<OpenTelemetryTraceConditions> t_OTConditions;
 
 bool RecThreadInfo::s_weDistributeQueries; // if true, 1 or more threads listen on the incoming query sockets and distribute them to workers
@@ -985,7 +976,7 @@ static void checkOrFixFDS(unsigned int listeningSockets, Logr::log_t log)
   // Static part: the FDs from the start, pipes, controlsocket, web socket, listen sockets
   unsigned int staticPart = 25; // general  allowance, including control socket, web, snmp
   // Handler thread gets one pipe, the others all of them
-  staticPart += 2 + (threads - 1) * (sizeof(RecThreadInfo::ThreadPipeSet) / sizeof(int)); // number of fd's in ThreadPipeSet
+  staticPart += 2 + ((threads - 1) * (sizeof(RecThreadInfo::ThreadPipeSet) / sizeof(int))); // number of fd's in ThreadPipeSet
   // listen sockets
   staticPart += listeningSockets;
   // Another fd per thread for poll/kqueue
@@ -999,7 +990,7 @@ static void checkOrFixFDS(unsigned int listeningSockets, Logr::log_t log)
   // plus each worker thread can have a number of idle outgoing TCP connections
   perWorker += TCPOutConnectionManager::s_maxIdlePerThread;
 
-  auto wantFDs = staticPart + workers * perWorker;
+  auto wantFDs = staticPart + (workers * perWorker);
 
   if (wantFDs > availFDs) {
     unsigned int hardlimit = getFilenumLimit(true);
@@ -1049,10 +1040,10 @@ static void loggerSDBackend(const Logging::Entry& entry)
   Logger::Urgency urgency = entry.d_priority != 0 ? Logger::Urgency(entry.d_priority) : Logger::Info;
   if (urgency > s_logUrgency) {
     // We do not log anything if the Urgency of the message is lower than the requested loglevel.
-    // Not that lower Urgency means higher number.
+    // Note that lower Urgency means higher number.
     return;
   }
-  // We need to keep the string in mem until sd_journal_sendv has ben called
+  // We need to keep the string in mem until sd_journal_sendv has been called
   vector<string> strings;
   auto appendKeyAndVal = [&strings](const string& key, const string& value) {
     strings.emplace_back(key + "=" + value);
@@ -1098,7 +1089,7 @@ static void loggerJSONBackend(const Logging::Entry& entry)
   Logger::Urgency urg = entry.d_priority != 0 ? Logger::Urgency(entry.d_priority) : Logger::Info;
   if (urg > s_logUrgency) {
     // We do not log anything if the Urgency of the message is lower than the requested loglevel.
-    // Not that lower Urgency means higher number.
+    // Note that lower Urgency means higher number.
     return;
   }
 
@@ -1753,6 +1744,7 @@ static int initSyncRes(Logr::log_t log)
   SyncRes::s_serverID = ::arg()["server-id"];
   // This bound is dynamically adjusted in SyncRes, depending on qname minimization being active
   SyncRes::s_maxqperq = ::arg().asNum("max-qperq");
+  SyncRes::s_maxbytesperq = ::arg().asNum("max-bytesperq");
   SyncRes::s_maxnsperresolve = ::arg().asNum("max-ns-per-resolve");
   SyncRes::s_maxnsaddressqperq = ::arg().asNum("max-ns-address-qperq");
   SyncRes::s_maxtotusec = 1000 * ::arg().asNum("max-total-msec");
@@ -2383,7 +2375,7 @@ static void handlePipeRequest(int fileDesc, FDMultiplexer::funcparam_t& /* var *
 
     __tsan_release(resp);
 
-    if (write(RecThreadInfo::self().getPipes().writeFromThread, &resp, sizeof(resp)) != sizeof(resp)) {
+    if (write(RecThreadInfo::self().getPipes().writeFromThread, static_cast<void*>(&resp), sizeof(resp)) != sizeof(resp)) {
       delete tmsg; // NOLINT: manual ownership handling
       unixDie("write to thread pipe returned wrong size or error");
     }
@@ -2400,18 +2392,18 @@ static void handleRCC(int fileDesc, FDMultiplexer::funcparam_t& /* var */)
     if (clientfd == -1) {
       throw PDNSException("accept failed");
     }
-    string msg = g_rcc.recv(clientfd).d_str;
+    string msg = RecursorControlChannel::recv(clientfd).d_str;
     log->info(Logr::Info, "Received rec_control command via control socket", "command", Logging::Loggable(msg));
 
     RecursorControlParser::func_t* command = nullptr;
     auto answer = RecursorControlParser::getAnswer(clientfd, msg, &command);
 
     if (command != doExitNicely) {
-      g_rcc.send(clientfd, answer);
+      RecursorControlChannel::send(clientfd, answer);
     }
     command();
     if (command == doExitNicely) {
-      g_rcc.send(clientfd, answer);
+      RecursorControlChannel::send(clientfd, answer);
     }
   }
   catch (const std::exception& e) {
@@ -2790,8 +2782,9 @@ static void recursorThread()
       else {
         t_proxyMapping = nullptr;
       }
-      if (g_OTConditions) {
-        t_OTConditions = make_unique<OpenTelemetryTraceConditions>(*g_OTConditions);
+      auto lock = g_initialOpenTelemetryConditions.lock();
+      if (*lock) {
+        t_OTConditions = make_unique<OpenTelemetryTraceConditions>(**lock);
       }
       else {
         t_OTConditions = nullptr;
@@ -2858,7 +2851,10 @@ static void recursorThread()
       checkFrameStreamExport(luaconfsLocal, luaconfsLocal->nodFrameStreamExportConfig, t_nodFrameStreamServersInfo);
 #endif
       for (const auto& rpz : luaconfsLocal->rpzs) {
-        string name = rpz.polName.empty() ? (rpz.zoneXFRParams.primaries.empty() ? "rpzFile" : rpz.zoneXFRParams.name) : rpz.polName;
+        string name = rpz.polName;
+        if (name.empty()) {
+          name = rpz.zoneXFRParams.primaries.empty() ? "rpzFile" : rpz.zoneXFRParams.name;
+        }
         t_Counters.at(rec::PolicyNameHits::policyName).counts[name] = 0;
       }
     }
@@ -3213,9 +3209,7 @@ int main(int argc, char** argv)
     g_quiet = ::arg().mustDo("quiet");
     s_logUrgency = (Logger::Urgency)::arg().asNum("loglevel");
 
-    if (s_logUrgency < Logger::Error) {
-      s_logUrgency = Logger::Error;
-    }
+    s_logUrgency = std::max(s_logUrgency, Logger::Error);
     if (!g_quiet && s_logUrgency < Logger::Info) { // Logger::Info=6, Logger::Debug=7
       s_logUrgency = Logger::Info; // if you do --quiet=no, you need Info to also see the query log
     }
@@ -3239,6 +3233,8 @@ int main(int argc, char** argv)
       pdns::RecResolve::setInstanceParameters(arg()["server-id"], ttl, interval, selfResolveCheck, []() { reloadZoneConfiguration(g_yamlSettings); });
     }
 
+    MemRecursorCache::s_maxEntrySize = ::arg().asNum("max-recordcache-entry-size");
+    RecursorPacketCache::s_maxEntrySize = ::arg().asNum("max-packetcache-entry-size");
     g_recCache = std::make_unique<MemRecursorCache>(::arg().asNum("record-cache-shards"));
     g_negCache = std::make_unique<NegCache>(::arg().asNum("record-cache-shards") / 8);
     if (!::arg().mustDo("disable-packetcache")) {
@@ -3278,7 +3274,7 @@ static RecursorControlChannel::Answer* doReloadLuaScript()
     if (fname.empty()) {
       t_pdl.reset();
       log->info(Logr::Info, "Unloaded current lua script");
-      return new RecursorControlChannel::Answer{0, string("unloaded\n")};
+      return new RecursorControlChannel::Answer{0, string("unloaded\n")}; // NOLINT: manual ownership handling
     }
 
     t_pdl = std::make_shared<RecursorLua4>();

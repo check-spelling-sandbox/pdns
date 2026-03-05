@@ -156,6 +156,7 @@ bulc
 bulletinc
 burstable
 byteslimit
+bytesperq
 bzero
 caa
 cachekey
@@ -534,6 +535,7 @@ gss
 gssapi
 gtld
 guilabel
+Guo
 gutenberg
 Gyselinck
 Haixin
@@ -632,6 +634,7 @@ Jelte
 Jermar
 Jeroen
 jessie
+Jian
 joaotavora
 jonathaneen
 Jong
@@ -979,6 +982,7 @@ oskar
 otherdomain
 otherpool
 othervariant
+ottracecondition
 ourname
 ourserial
 outpacket
@@ -1166,6 +1170,7 @@ remoteip
 removedomainkey
 replacerrset
 requery
+RESINFO
 resolv
 respawned
 respawning
@@ -1186,6 +1191,7 @@ rname
 rockylinux
 rocommunity
 Roel
+Rolff
 rolltype
 Rosmalen
 roundrobin
@@ -1216,6 +1222,7 @@ Sangwhan
 Sanjaya
 Saunalahti
 saxfr
+SBOMs
 Scheffler
 Schlich
 Scholten
@@ -1234,6 +1241,7 @@ securitypolling
 seealso
 segfault
 selectmplexer
+semconv
 senderrors
 Sendetzky
 Sergey
@@ -1257,6 +1265,7 @@ shinsterneck
 shnya
 showdetails
 showflags
+Shuhan
 Shukla
 sidebarbgcolor
 sidebarbtncolor
@@ -1437,6 +1446,7 @@ Toosarani
 Toshifumi
 totms
 traceid
+traceparent
 Travaille
 treemacs
 tribool
@@ -1593,6 +1603,7 @@ yourdomain
 yourorganization
 yoursecret
 yubikey
+Yufan
 Yunyi
 Yuxiao
 YYYYMMD

@@ -118,6 +118,10 @@ AuthWebServer::AuthWebServer() :
 
 void AuthWebServer::go(StatBag& stats)
 {
+  // Compute a unique random value used for indexPOST validation
+  std::array<char, 32> buf{};
+  dns_random(buf.data(), buf.size());
+  d_unique = Base64Encode(std::string(buf.data(), buf.size()));
   S.doRings();
   std::thread webT([this]() { webThread(); });
   webT.detach();
@@ -168,7 +172,7 @@ static string htmlescape(const string& inputString)
   return result;
 }
 
-static void printtable(ostringstream& ret, const string& ringname, const string& title, int limit = 10)
+static void printtable(ostringstream& ret, const string& ringname, const std::string& unique, const string& title, int limit = 10)
 {
   unsigned int tot = 0;
   int entries = 0;
@@ -180,20 +184,35 @@ static void printtable(ostringstream& ret, const string& ringname, const string&
   }
 
   ret << "<div class=\"panel\">";
-  ret << "<span class=resetring><i></i><a href=\"?resetring=" << htmlescape(ringname) << "\">Reset</a></span>" << endl;
+
+  ret << "<span class=resetring><i></i>";
+  ret << "<form method=\"post\">";
+  ret << "<input type=\"hidden\" name=\"resetring\" value=\"" << htmlescape(ringname) << "\" />";
+  ret << "<input type=\"hidden\" name=\"unique\" value=\"" << htmlescape(unique) << "\" />";
+  ret << "<input type=\"submit\" value=\"reset\" />";
+  ret << "</form>";
+  ret << "</span>" << endl;
+
   ret << "<h2>" << title << "</h2>" << endl;
   ret << "<div class=ringmeta>";
   ret << "<a class=topXofY href=\"?ring=" << htmlescape(ringname) << "\">Showing: Top " << limit << " of " << entries << "</a>" << endl;
-  ret << "<span class=resizering>Resize: ";
-  std::vector<uint64_t> sizes{10, 100, 500, 1000, 10000, 500000, 0};
-  for (int i = 0; sizes[i] != 0; ++i) {
-    if (S.getRingSize(ringname) != sizes[i]) {
-      ret << "<a href=\"?resizering=" << htmlescape(ringname) << "&amp;size=" << sizes[i] << "\">" << sizes[i] << "</a> ";
+
+  ret << "<span class=resizering>";
+  ret << "<form method=\"post\">";
+  ret << "<input type=\"hidden\" name=\"resizering\" value=\"" << htmlescape(ringname) << "\" />";
+  ret << "<input type=\"hidden\" name=\"unique\" value=\"" << htmlescape(unique) << "\" />";
+  ret << "<select name=\"size\">";
+  static const std::vector<uint64_t> sizes{10, 100, 500, 1000, 10000, 500000, 0};
+  for (const auto size : sizes) {
+    ret << "<option value=\"" << size << "\"";
+    if (S.getRingSize(ringname) == size) {
+      ret << " selected";
     }
-    else {
-      ret << "(" << sizes[i] << ") ";
-    }
+    ret << ">" << size << "</option>";
   }
+  ret << "</select>";
+  ret << "<input type=\"submit\" value=\"resize\" />";
+  ret << "</form>";
   ret << "</span></div>";
 
   ret << "<table class=\"data\">";
@@ -239,26 +258,8 @@ string AuthWebServer::makePercentage(const double& val)
   return (boost::format("%.01f%%") % val).str();
 }
 
-void AuthWebServer::indexfunction(HttpRequest* req, HttpResponse* resp)
+void AuthWebServer::indexGET(HttpRequest* req, HttpResponse* resp)
 {
-  if (!req->getvars["resetring"].empty()) {
-    if (S.ringExists(req->getvars["resetring"])) {
-      S.resetRing(req->getvars["resetring"]);
-    }
-    resp->status = 302;
-    resp->headers["Location"] = req->url.path;
-    return;
-  }
-  if (!req->getvars["resizering"].empty()) {
-    int size = std::stoi(req->getvars["size"]);
-    if (S.ringExists(req->getvars["resizering"]) && size > 0 && size <= 500000) {
-      S.resizeRing(req->getvars["resizering"], std::stoi(req->getvars["size"]));
-    }
-    resp->status = 302;
-    resp->headers["Location"] = req->url.path;
-    return;
-  }
-
   ostringstream ret;
 
   ret << "<!DOCTYPE html>" << endl;
@@ -294,10 +295,11 @@ void AuthWebServer::indexfunction(HttpRequest* req, HttpResponse* resp)
   ret << "Backend query load, 1, 5, 10 minute averages: " << std::setprecision(3) << (int)d_qcachemisses.get1() << ", " << (int)d_qcachemisses.get5() << ", " << (int)d_qcachemisses.get10() << ". Max queries/second: " << (int)d_qcachemisses.getMax() << "<br>" << endl;
 
   ret << "Total queries: " << S.read("udp-queries") << ". Question/answer latency: " << static_cast<double>(S.read("latency")) / 1000.0 << "ms</p><br>" << endl;
-  if (req->getvars["ring"].empty()) {
+  const auto& ringname = req->getvars["ring"];
+  if (ringname.empty()) {
     auto entries = S.listRings();
     for (const auto& entry : entries) {
-      printtable(ret, entry, S.getRingTitle(entry));
+      printtable(ret, entry, d_unique, S.getRingTitle(entry));
     }
 
     printvars(ret);
@@ -305,8 +307,8 @@ void AuthWebServer::indexfunction(HttpRequest* req, HttpResponse* resp)
       printargs(ret);
     }
   }
-  else if (S.ringExists(req->getvars["ring"])) {
-    printtable(ret, req->getvars["ring"], S.getRingTitle(req->getvars["ring"]), 100);
+  else if (S.ringExists(ringname)) {
+    printtable(ret, ringname, d_unique, S.getRingTitle(ringname), 100);
   }
 
   ret << "</div></div>" << endl;
@@ -315,6 +317,37 @@ void AuthWebServer::indexfunction(HttpRequest* req, HttpResponse* resp)
 
   resp->body = ret.str();
   resp->status = 200;
+}
+
+void AuthWebServer::indexPOST(HttpRequest* req, HttpResponse* resp)
+{
+  string unique = req->postvars["unique"];
+  if (unique != d_unique) {
+    throw HttpForbiddenException();
+  }
+
+  string ring = req->postvars["resetring"];
+  if (!ring.empty()) {
+    if (S.ringExists(ring)) {
+      S.resetRing(ring);
+    }
+    resp->status = 302;
+    resp->headers["Location"] = req->url.path;
+    return;
+  }
+
+  ring = req->postvars["resizering"];
+  if (!ring.empty()) {
+    int size = std::stoi(req->postvars["size"]);
+    if (S.ringExists(ring) && size > 0 && size <= 500000 && S.getRingSize(ring) != static_cast<unsigned int>(size)) {
+      S.resizeRing(ring, size);
+    }
+    resp->status = 302;
+    resp->headers["Location"] = req->url.path;
+    return;
+  }
+
+  throw HttpForbiddenException();
 }
 
 /** Helper to build a record content as needed. */
@@ -618,6 +651,17 @@ static std::string normalizeJsonString(const std::string& jsonContent)
     // Preserve quotes in the result if the chunk is quoted.
     bool quote = input[pos] == '"';
     auto chunksize = parseRFC1035CharString(input.substr(pos), chunk);
+    if (chunksize == 0) {
+      // Found one of (  ) ; \x7f
+      if (input[pos] < ' ' || input[pos] >= 0x7f) {
+        std::stringstream hexstr;
+        hexstr << std::hex << static_cast<unsigned char>(input[pos]);
+        throw ApiException("Invalid character \\x" + hexstr.str() + " in record content '" + std::string(jsonContent) + "'");
+      }
+      else {
+        throw ApiException("Invalid character '" + std::string(1, input[pos]) + "' in record content '" + std::string(jsonContent) + "'");
+      }
+    }
     if (quote) {
       ret << '"';
     }
@@ -657,7 +701,15 @@ static void gatherRecords(const Json& container, const DNSName& qname, const QTy
   validateGatheredRRType(resourceRecord);
   const auto& items = container["records"].array_items();
   for (const auto& record : items) {
-    string content = normalizeJsonString(stringFromJson(record, "content"));
+    string content = stringFromJson(record, "content");
+    switch (resourceRecord.qtype.getCode()) {
+    case QType::LUA:
+      // Keep LUA record contents unmodified
+      break;
+    default:
+      content = normalizeJsonString(content);
+      break;
+    }
     if (record.object_items().count("priority") > 0) {
       throw std::runtime_error("`priority` element is not allowed in record");
     }
@@ -1685,11 +1737,11 @@ static bool areUnderscoresAllowed(const ZoneName& zonename, DNSBackend& backend)
 
 // Wrapper around checkRRSet; returns true if all checks successful, false if
 // not, in which case the response body and status have been filled up.
-static bool checkNewRecords(HttpResponse* resp, vector<DNSResourceRecord>& records, const ZoneName& zone, bool allowUnderscores)
+static bool checkNewRecords(HttpResponse* resp, vector<DNSResourceRecord>& records, const ZoneName& zone, Check::RRSetFlags flags)
 {
   std::vector<std::pair<DNSResourceRecord, string>> errors;
 
-  Check::checkRRSet({}, records, zone, allowUnderscores, errors);
+  Check::checkRRSet({}, records, zone, flags, errors);
   if (errors.empty()) {
     return true;
   }
@@ -2063,7 +2115,9 @@ static void apiServerZonesPOST(HttpRequest* req, HttpResponse* resp)
     }
   }
 
-  if (!checkNewRecords(resp, new_records, zonename, false)) { // no RFC1123-CONFORMANCE metadata on new zones
+  // Flags = 0, as new zones do not have RFC1123-CONFORMANCE metadata yet, and
+  // all records use the same default ttl value.
+  if (!checkNewRecords(resp, new_records, zonename, static_cast<Check::RRSetFlags>(0))) {
     return;
   }
 
@@ -2092,7 +2146,10 @@ static void apiServerZonesPOST(HttpRequest* req, HttpResponse* resp)
 
   try {
     // will be overridden by updateDomainSettingsFromDocument, if given in document.
-    domainInfo.backend->setDomainMetadataOne(zonename, "SOA-EDIT-API", "DEFAULT");
+    const string defaultSOAEditAPI = ::arg()["default-soa-edit-api"];
+    if (!defaultSOAEditAPI.empty()) {
+      domainInfo.backend->setDomainMetadataOne(zonename, "SOA-EDIT-API", defaultSOAEditAPI);
+    }
 
     for (auto& resourceRecord : new_records) {
       resourceRecord.domain_id = static_cast<int>(domainInfo.id);
@@ -2240,7 +2297,11 @@ static void apiServerZoneDetailPUT(HttpRequest* req, HttpResponse* resp)
     }
 
     bool allowUnderscores = areUnderscoresAllowed(zoneData.zoneName, *zoneData.domainInfo.backend);
-    if (!checkNewRecords(resp, new_records, zoneData.zoneName, allowUnderscores)) {
+    Check::RRSetFlags flags{Check::RRSET_CHECK_TTL};
+    if (allowUnderscores) {
+      flags = static_cast<Check::RRSetFlags>(flags | Check::RRSET_ALLOW_UNDERSCORES);
+    }
+    if (!checkNewRecords(resp, new_records, zoneData.zoneName, flags)) {
       return;
     }
 
@@ -2541,7 +2602,12 @@ static applyResult applyReplace(const DomainInfo& domainInfo, const ZoneName& zo
           soa.edit_done = increaseSOARecord(resourceRecord, soa.edit_api_kind, soa.edit_kind, zonename);
         }
       }
-      if (!checkNewRecords(resp, new_records, zonename, allowUnderscores)) {
+      // All records use the same TTL, no need to check for discrepancy.
+      Check::RRSetFlags flags{0};
+      if (allowUnderscores) {
+        flags = Check::RRSET_ALLOW_UNDERSCORES;
+      }
+      if (!checkNewRecords(resp, new_records, zonename, flags)) {
         // Proper error response has been set up, no need to do anything further.
         return ABORT;
       }
@@ -2574,6 +2640,7 @@ static applyResult applyReplace(const DomainInfo& domainInfo, const ZoneName& zo
   return SUCCESS;
 }
 
+// Apply a PRUNE or EXTEND changetype.
 static applyResult applyPruneOrExtend(const DomainInfo& domainInfo, const ZoneName& zonename, const Json& container, DNSName& qname, QType& qtype, bool allowUnderscores, soaEditSettings& soa, HttpResponse* resp, changeType operationType, std::vector<DNSResourceRecord>& rrset)
 {
   if (!container["records"].is_array()) {
@@ -2592,11 +2659,6 @@ static applyResult applyPruneOrExtend(const DomainInfo& domainInfo, const ZoneNa
     new_record.domain_id = static_cast<int>(domainInfo.id);
     if (new_record.qtype.getCode() == QType::SOA && new_record.qname == zonename.operator const DNSName&()) {
       soa.edit_done = increaseSOARecord(new_record, soa.edit_api_kind, soa.edit_kind, zonename);
-    }
-
-    if (!checkNewRecords(resp, new_records, zonename, allowUnderscores)) {
-      // Proper error response has been set up, no need to do anything further.
-      return ABORT;
     }
 
     // Check if this record exists in the RRSet
@@ -2621,6 +2683,17 @@ static applyResult applyPruneOrExtend(const DomainInfo& domainInfo, const ZoneNa
     if (!submitChanges) {
       return NOP;
     }
+
+    // Check the updated RRSet for correctness
+    Check::RRSetFlags flags{Check::RRSET_CHECK_TTL};
+    if (allowUnderscores) {
+      flags = static_cast<Check::RRSetFlags>(flags | Check::RRSET_ALLOW_UNDERSCORES);
+    }
+    if (!checkNewRecords(resp, rrset, zonename, flags)) {
+      // Proper error response has been set up, no need to do anything further.
+      return ABORT;
+    }
+
     if (!domainInfo.backend->replaceRRSet(domainInfo.id, qname, qtype, rrset)) {
       throw ApiException("Hosting backend does not support editing records.");
     }
@@ -2713,7 +2786,7 @@ static void patchZone(UeberBackend& backend, const ZoneName& zonename, DomainInf
         cacheNeeded = (operations & ((1U << PRUNE) | (1U << EXTEND))) != 0;
       }
 
-      applyResult result;
+      applyResult result{ABORT};
       std::vector<DNSResourceRecord> rrset;
       switch (operationType) {
       case DELETE:
@@ -3208,6 +3281,7 @@ static void cssfunction(HttpRequest* /* req */, HttpResponse* resp)
   ret << ".resetring i { background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAA/klEQVQY01XPP04UUBgE8N/33vd2XZUWEuzYuMZEG4KFCQn2NhA4AIewAOMBPIG2xhNYeAcKGqkNCdmYlVBZGBIT4FHsbuE0U8xk/kAbqm9TOfI/nicfhmwgDNhvylUT58kxCp4l31L8SfH9IetJ2ev6PwyIwyZWsdb11/gbTK55Co+r8rmJaRPTFJcpZil+pTit7C5awMpA+Zpi1sRFE9MqflYOloYCjY2uP8EdYiGU4CVGUBubxKfOOLjrtOBmzvEilbVb/aQWvhRl0unBZVXe4XdnK+bprwqnhoyTsyZ+JG8Wk0apfExxlcp7PFruXH8gdxamWB4cyW2sIO4BG3czIp78jUIAAAAASUVORK5CYII=); width: 10px; height: 10px; margin-right: 2px; display: inline-block; background-repeat: no-repeat; }" << endl;
   ret << ".resetring:hover i { background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAA2ElEQVQY013PMUoDcRDF4c+kEzxCsNNCrBQvIGhnlcYm11EkBxAraw8gglgIoiJpAoKIYlBcgrgopsma3c3fwt1k9cHA480M8xvQp/nMjorOWY5ov7IAYlpjQk7aYxcuWBpwFQgJnUcaYk7GhEDIGL5w+MVpKLIRyR2b4JOjvGhUKzHTv2W7iuSN479Dvu9plf1awbQ6y3x1sU5tjpVJcMbakF6Ycoas8Dl5xEHJ160wRdfqzXfa6XQ4PLDlicWUjxHxZfndL/N+RhiwNzl/Q6PDhn/qsl76H7prcApk2B1aAAAAAElFTkSuQmCC);}" << endl;
   ret << ".resizering {float: right;}" << endl;
+  ret << "input, button { border: 0; padding: 0; background: inherit; text-decoration: underline; }" << endl;
   resp->body = ret.str();
   resp->status = 200;
 }
@@ -3264,10 +3338,13 @@ void AuthWebServer::webThread()
       d_ws->registerApiHandler("/api", apiDiscovery, "GET");
     }
     if (::arg().mustDo("webserver")) {
+      d_ws->registerWebHandler("/style.css", cssfunction, "GET");
+      // These two handlers need to be able to access our classes' fields,
+      // hence the use of lambdas to capture this and invoke a class method.
       d_ws->registerWebHandler(
-        "/style.css", [](HttpRequest* req, HttpResponse* resp) { cssfunction(req, resp); }, "GET");
+        "/", [this](HttpRequest* req, HttpResponse* resp) { indexGET(req, resp); }, "GET");
       d_ws->registerWebHandler(
-        "/", [this](HttpRequest* req, HttpResponse* resp) { indexfunction(req, resp); }, "GET");
+        "/", [this](HttpRequest* req, HttpResponse* resp) { indexPOST(req, resp); }, "POST");
       d_ws->registerWebHandler("/metrics", prometheusMetrics, "GET");
     }
     d_ws->go();

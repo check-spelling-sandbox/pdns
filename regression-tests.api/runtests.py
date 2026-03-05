@@ -52,8 +52,6 @@ AUTH_PGSQL_TPL = """
 launch=gpgsql
 gpgsql-dnssec=on
 gpgsql-dbname="""+PGSQL_DB+"""
-# on conflict is available in pg 9.5 and up
-gpgsql-set-tsig-key-query=insert into tsigkeys (name,algorithm,secret) values($1,$2,$3) on conflict(name, algorithm) do update set secret=Excluded.secret
 """
 
 AUTH_SQLITE_TPL = """
@@ -73,6 +71,7 @@ views
 AUTH_COMMON_TPL = """
 module-dir=../regression-tests/modules
 default-soa-edit=INCEPTION-INCREMENT
+default-soa-edit-api=EPOCH
 launch+=bind
 bind-config=bindbackend.conf
 loglevel=5
@@ -161,7 +160,7 @@ if daemon not in ('authoritative', 'recursor') or backend not in ('gmysql', 'gpg
 daemon = sys.argv[1]
 
 pdns_server = os.environ.get("PDNSSERVER", "../pdns/pdns_server")
-pdns_recursor = os.environ.get("PDNSRECURSOR", "../pdns/recursordist/pdns_recursor")
+pdns_recursor = os.environ.get("PDNSRECURSOR", "../pdns/recursordist/build/pdns_recursor")
 common_args = [
     "--daemon=no", "--socket-dir=.", "--config-dir=.",
     "--local-address=127.0.0.1", "--local-port="+str(DNSPORT),

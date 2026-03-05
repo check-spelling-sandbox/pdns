@@ -212,11 +212,6 @@ static void usage(po::options_description &desc) {
   cerr << desc << "\n";
 }
 
-// The compiler does not like using rfc1982LessThan in std::sort directly
-static bool sortSOA(uint32_t i, uint32_t j) {
-  return rfc1982LessThan(i, j);
-}
-
 static void cleanUpDomain(const ZoneName& domain, const uint16_t& keep, const string& workdir) {
   string dir = workdir + "/" + domain.toString();
   vector<uint32_t> zoneVersions;
@@ -244,7 +239,7 @@ static void cleanUpDomain(const ZoneName& domain, const uint16_t& keep, const st
   g_log<<Logger::Info<<"cleaning up the oldest "<<zoneVersions.size() - keep<<endl;
 
   // Sort the versions
-  std::sort(zoneVersions.begin(), zoneVersions.end(), sortSOA);
+  std::sort(zoneVersions.begin(), zoneVersions.end(), rfc1982LessThan<uint32_t>);
 
   // And delete all the old ones
   {
@@ -522,7 +517,7 @@ static void updateThread(const string& workdir, const uint16_t& keep, const uint
       uint32_t soaTTL = 0;
       records_t records;
       try {
-        AXFRRetriever axfr(primary, domain, tt, &local);
+        AXFRRetriever axfr(nullptr /* no structured logging */, primary, domain, tt, &local);
         uint32_t nrecords=0;
         Resolver::res_t nop;
         vector<DNSRecord> chunk;
@@ -925,7 +920,7 @@ static bool handleIXFR(int fd, const MOADNSParser& mdp, const shared_ptr<const S
 
   uint32_t ourLatestSerial = zoneInfo->soa->d_st.serial;
 
-  if (rfc1982LessThan(ourLatestSerial, clientSOA->d_st.serial) || ourLatestSerial == clientSOA->d_st.serial) {
+  if (rfc1982LessThanOrEqual(ourLatestSerial, clientSOA->d_st.serial)) {
     /* RFC 1995 Section 2
      *    If an IXFR query with the same or newer version number than that of
      *    the server is received, it is replied to with a single SOA record of
