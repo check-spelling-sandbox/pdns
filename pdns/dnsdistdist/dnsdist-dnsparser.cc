@@ -132,7 +132,8 @@ bool changeNameInDNSPacket(PacketBuffer& initialPacket, const DNSName& from, con
     pw.startRecord(rrname, ah.d_type, ah.d_ttl, ah.d_class, place, true);
     if (nameOnlyTypes.count(ah.d_type)) {
       rrname = pr.getName();
-      pw.xfrName(rrname);
+      // compression is not allowed for DNAME target per rfc6672 section 2.5
+      pw.xfrName(rrname, ah.d_type != QType::DNAME);
     }
     else if (noNameTypes.count(ah.d_type)) {
       pr.xfrBlob(blob);
@@ -147,13 +148,13 @@ bool changeNameInDNSPacket(PacketBuffer& initialPacket, const DNSName& from, con
       auto prio = pr.get16BitInt();
       rrname = pr.getName();
       pw.xfr16BitInt(prio);
-      pw.xfrName(rrname);
+      pw.xfrName(rrname, true);
     }
     else if (ah.d_type == QType::SOA) {
       auto mname = pr.getName();
-      pw.xfrName(mname);
+      pw.xfrName(mname, true);
       auto rname = pr.getName();
-      pw.xfrName(rname);
+      pw.xfrName(rname, true);
       /* serial */
       pw.xfr32BitInt(pr.get32BitInt());
       /* refresh */
@@ -173,7 +174,11 @@ bool changeNameInDNSPacket(PacketBuffer& initialPacket, const DNSName& from, con
       /* port */
       pw.xfr16BitInt(pr.get16BitInt());
       auto target = pr.getName();
-      pw.xfrName(target);
+      /* Compression is not allowed per rfc2782:
+         "Unless and until permitted by future standards action,
+         name compression is not to be used for this field."
+      */
+      pw.xfrName(target, false);
     }
     else {
       /* sorry, unsafe type */

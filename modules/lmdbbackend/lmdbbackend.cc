@@ -2306,7 +2306,7 @@ void LMDBBackend::getAllDomainsFiltered(vector<DomainInfo>* domains, const std::
 
       consolidateDomainInfo(di);
       if (allow(di)) {
-        domains->push_back(di);
+        domains->push_back(std::move(di));
       }
     }
   }
@@ -2396,26 +2396,25 @@ void LMDBBackend::setLastCheckTime(domainid_t domain_id, time_t last_check)
 
 void LMDBBackend::getUpdatedPrimaries(vector<DomainInfo>& updatedDomains, std::unordered_set<DNSName>& catalogs, CatalogHashMap& catalogHashes)
 {
-  CatalogInfo ci;
-
-  getAllDomainsFiltered(&(updatedDomains), [this, &catalogs, &catalogHashes, &ci](DomainInfo& di) {
+  getAllDomainsFiltered(&(updatedDomains), [this, &catalogs, &catalogHashes](DomainInfo& di) {
     if (!di.isPrimaryType()) {
       return false;
     }
 
     if (di.kind == DomainInfo::Producer) {
       catalogs.insert(di.zone.operator const DNSName&());
-      catalogHashes[di.zone].process("\0");
+      catalogHashes[di.zone].process("");
       return false; // Producer freshness check is performed elsewhere
     }
 
     if (!di.catalog.empty()) {
-      ci.fromJson(di.options, CatalogInfo::CatalogType::Producer);
-      ci.updateHash(catalogHashes, di);
+      CatalogInfo::updateCatalogHash(catalogHashes, di);
     }
 
     if (getSerial(di) && di.serial != di.notified_serial) {
       di.backend = this;
+      di.catalog.clear();
+      di.options.clear();
       return true;
     }
 
@@ -3252,7 +3251,7 @@ bool LMDBBackend::getTSIGKeys(std::vector<struct TSIGKey>& keys)
     for (auto key_id : ids) {
       TSIGKey key;
       if (txn.get(key_id, key)) {
-        keys.push_back(key);
+        keys.push_back(std::move(key));
       }
     }
   }
@@ -3558,22 +3557,12 @@ public:
     BackendMakers().report(std::make_unique<LMDBFactory>());
     // If this module is not loaded dynamically at runtime, this code runs
     // as part of a global constructor, before the structured logger has a
-    // chance to be set up, so fallback to simple logging in this case.
-    if (!g_slogStructured || !g_slog) {
-      g_log << Logger::Info << "[lmdbbackend] This is the lmdb backend version " VERSION
+    // chance to be set up, so fallback to simple logging.
+    g_log << Logger::Info << "[lmdbbackend] This is the lmdb backend version " VERSION
 #ifndef REPRODUCIBLE
-            << " (" __DATE__ " " __TIME__ ")"
+          << " (" __DATE__ " " __TIME__ ")"
 #endif
-            << " reporting" << endl;
-    }
-    else {
-      g_slog->withName("lmdbbackend")->info(Logr::Info, "LMDB backend starting", "version", Logging::Loggable(VERSION)
-#ifndef REPRODUCIBLE
-                                                                                              ,
-                                            "build date", Logging::Loggable(__DATE__ " " __TIME__)
-#endif
-      );
-    }
+          << " reporting" << endl;
   }
 };
 
