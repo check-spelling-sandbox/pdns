@@ -43,7 +43,6 @@
 #include "dnsdist-doh-common.hh"
 #include "doq.hh"
 #include "doh3.hh"
-#include "ednsoptions.hh"
 #include "iputils.hh"
 #include "misc.hh"
 #include "mplexer.hh"
@@ -85,26 +84,26 @@ struct DNSQuestion
 
   const dnsheader_aligned getHeader() const
   {
-    if (data.size() < sizeof(dnsheader)) {
-      throw std::runtime_error("Trying to access the dnsheader of a too small (" + std::to_string(data.size()) + ") DNSQuestion buffer");
+    if (getData().size() < sizeof(dnsheader)) {
+      throw std::runtime_error("Trying to access the dnsheader of a too small (" + std::to_string(getData().size()) + ") DNSQuestion buffer");
     }
-    return dnsheader_aligned(data.data());
+    return dnsheader_aligned(getData().data());
   }
 
   /* this function is not safe against unaligned access, you should
-     use editHeader() instead, but we need it for the Lua bindings */
-  dnsheader* getMutableHeader() const
+     use editHeader() instead, but we need it for the deprecated Lua bindings */
+  dnsheader* getMutableHeader()
   {
-    if (data.size() < sizeof(dnsheader)) {
-      throw std::runtime_error("Trying to access the dnsheader of a too small (" + std::to_string(data.size()) + ") DNSQuestion buffer");
+    if (getData().size() < sizeof(dnsheader)) {
+      throw std::runtime_error("Trying to access the dnsheader of a too small (" + std::to_string(getData().size()) + ") DNSQuestion buffer");
     }
     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-    return reinterpret_cast<dnsheader*>(data.data());
+    return reinterpret_cast<dnsheader*>(getMutableData().data());
   }
 
   bool hasRoomFor(size_t more) const
   {
-    return data.size() <= getMaximumSize() && (getMaximumSize() - data.size()) >= more;
+    return getData().size() <= getMaximumSize() && (getMaximumSize() - getData().size()) >= more;
   }
 
   size_t getMaximumSize() const
@@ -193,6 +192,7 @@ struct DNSQuestion
 protected:
   virtual std::shared_ptr<const Logr::Logger> getThisLogger(std::shared_ptr<const Logr::Logger> parent) const;
 
+  /* do not access the data field directly: use getData() or getMutableData() */
   PacketBuffer& data;
   std::shared_ptr<const Logr::Logger> d_logger;
 
@@ -200,7 +200,6 @@ public:
   InternalQueryState& ids;
   std::unique_ptr<Netmask> ecs{nullptr};
   std::string sni; /* Server Name Indication, if any (DoT or DoH) */
-  mutable std::unique_ptr<EDNSOptionViewMap> ednsOptions; /* this needs to be mutable because it is parsed just in time, when DNSQuestion is read-only */
   std::shared_ptr<IncomingTCPConnectionState> d_incomingTCPState{nullptr};
   std::unique_ptr<std::vector<ProxyProtocolValue>> proxyProtocolValues{nullptr};
   uint16_t ecsPrefixLength;
@@ -340,8 +339,8 @@ class DNSCryptContext;
 
 struct ClientState
 {
-  ClientState(const ComboAddress& local_, bool isTCP_, bool doReusePort, int fastOpenQueue, const std::string& itfName, const std::set<int>& cpus_, bool enableProxyProtocol) :
-    cpus(cpus_), interface(itfName), local(local_), fastOpenQueueSize(fastOpenQueue), tcp(isTCP_), reuseport(doReusePort), d_enableProxyProtocol(enableProxyProtocol)
+  ClientState(const ComboAddress& local_, bool isTCP_, bool doReusePort, int fastOpenQueue, const std::string& itfName, const std::set<int>& cpus_, bool enableProxyProtocol, bool padResponses) :
+    cpus(cpus_), interface(itfName), local(local_), fastOpenQueueSize(fastOpenQueue), tcp(isTCP_), reuseport(doReusePort), d_enableProxyProtocol(enableProxyProtocol), d_padResponses(padResponses)
   {
   }
 
@@ -392,6 +391,7 @@ struct ClientState
   bool tcp;
   bool reuseport;
   bool d_enableProxyProtocol{true}; // the global proxy protocol ACL still applies
+  bool d_padResponses{false};
   bool ready{false};
 
   int getSocket() const
@@ -1021,7 +1021,7 @@ bool assignOutgoingUDPQueryToBackend(std::shared_ptr<DownstreamState>& downstrea
 
 ssize_t udpClientSendRequestToBackend(const std::shared_ptr<DownstreamState>& backend, const int socketDesc, const PacketBuffer& request, bool healthCheck = false);
 bool sendUDPResponse(int origFD, const PacketBuffer& response, const int delayMsec, const ComboAddress& origDest, const ComboAddress& origRemote);
-void handleResponseSent(const DNSName& qname, const QType& qtype, double latencyUs, const ComboAddress& client, const ComboAddress& backend, unsigned int size, const dnsheader& cleartextDH, dnsdist::Protocol outgoingProtocol, dnsdist::Protocol incomingProtocol, bool fromBackend);
-void handleResponseSent(const InternalQueryState& ids, double latencyUs, const ComboAddress& client, const ComboAddress& backend, unsigned int size, const dnsheader& cleartextDH, dnsdist::Protocol outgoingProtocol, bool fromBackend);
+void handleResponseSent(DNSName&& qname, const QType& qtype, double latencyUs, const ComboAddress& client, const ComboAddress& backend, unsigned int size, const dnsheader& cleartextDH, dnsdist::Protocol outgoingProtocol, dnsdist::Protocol incomingProtocol, bool fromBackend);
+void handleResponseSent(InternalQueryState& ids, double latencyUs, const ComboAddress& client, const ComboAddress& backend, unsigned int size, const dnsheader& cleartextDH, dnsdist::Protocol outgoingProtocol, bool fromBackend);
 bool handleTimeoutResponseRules(const std::vector<dnsdist::rules::ResponseRuleAction>& rules, InternalQueryState& ids, const std::shared_ptr<DownstreamState>& ds, const std::shared_ptr<TCPQuerySender>& sender);
 void handleServerStateChange(const std::string& nameWithAddr, bool newResult);

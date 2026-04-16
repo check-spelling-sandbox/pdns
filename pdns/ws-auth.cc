@@ -100,7 +100,7 @@ AuthWebServer::AuthWebServer() :
 
 {
   if (arg().mustDo("webserver") || arg().mustDo("api")) {
-    d_ws = std::make_unique<WebServer>(arg()["webserver-address"], arg().asNum("webserver-port"));
+    d_ws = std::make_unique<WebServer>(std::make_shared<ConcurrentConnectionManager>(arg().asNum("webserver-max-concurrent-connections")), arg()["webserver-address"], arg().asNum("webserver-port"));
     if (g_slogStructured) {
       d_ws->setSLog(g_slog->withName("webserver"));
     }
@@ -508,6 +508,9 @@ static void fillZone(UeberBackend& backend, const ZoneName& zonename, HttpRespon
            please be aware that you will also need to update the conditions in the code merging
            the records and comments below */
         if (rrA.qname == rrB.qname) {
+          if (rrA.qtype == rrB.qtype) {
+            return rrB.content > rrA.content;
+          }
           return rrB.qtype < rrA.qtype;
         }
         return rrB.qname < rrA.qname;
@@ -528,6 +531,9 @@ static void fillZone(UeberBackend& backend, const ZoneName& zonename, HttpRespon
            please be aware that you will also need to update the conditions in the code merging
            the records and comments below */
         if (rrA.qname == rrB.qname) {
+          if (rrA.qtype == rrB.qtype) {
+            return rrB.content > rrA.content;
+          }
           return rrB.qtype < rrA.qtype;
         }
         return rrB.qname < rrA.qname;
@@ -1120,13 +1126,13 @@ static bool isValidMetadataKind(const string& kind, bool readonly)
 void apiDocs(HttpRequest* req, HttpResponse* resp)
 {
   if (req->accept_yaml) {
-    resp->setYamlBody(g_api_swagger_yaml);
+    resp->setYamlBody(g_api_openapi_yaml);
   }
   else if (req->accept_json) {
-    resp->setJsonBody(g_api_swagger_json);
+    resp->setJsonBody(g_api_openapi_json);
   }
   else {
-    resp->setPlainBody(g_api_swagger_yaml);
+    resp->setPlainBody(g_api_openapi_yaml);
   }
 }
 
@@ -2531,7 +2537,7 @@ static void replaceZoneRecords(const DomainInfo& domainInfo, const ZoneName& zon
   }
   if (!new_records.empty() && ent_present) {
     QType qt_ent{QType::ENT};
-    if (!domainInfo.backend->replaceRRSet(domainInfo.id, qname, qt_ent, new_records)) {
+    if (!domainInfo.backend->replaceRRSet(domainInfo.id, qname, qt_ent, {})) {
       throw ApiException("Hosting backend does not support editing records.");
     }
   }

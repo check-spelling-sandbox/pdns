@@ -20,6 +20,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 #include "dns.hh"
+#include "dnsname.hh"
 #include "dolog.hh"
 #include "dnsdist.hh"
 #include "dnsdist-dnsparser.hh"
@@ -28,6 +29,7 @@
 #include "dnswriter.hh"
 #include "ednsoptions.hh"
 #include "ednssubnet.hh"
+#include "qtype.hh"
 
 int rewriteResponseWithoutEDNS(const PacketBuffer& initialPacket, PacketBuffer& newContent)
 {
@@ -137,6 +139,11 @@ static bool addOrReplaceEDNSOption(std::vector<std::pair<uint16_t, std::string>>
         ++it;
       }
     }
+  }
+
+  if (newOptionContent.size() == EDNS_OPTION_CODE_SIZE + EDNS_OPTION_LENGTH_SIZE) {
+    options.emplace_back(optionCode, "");
+    return true;
   }
 
   options.emplace_back(optionCode, std::string(&newOptionContent.at(EDNS_OPTION_CODE_SIZE + EDNS_OPTION_LENGTH_SIZE), newOptionContent.size() - (EDNS_OPTION_CODE_SIZE + EDNS_OPTION_LENGTH_SIZE)));
@@ -265,10 +272,18 @@ int locateEDNSOptRR(const PacketBuffer& packet, uint16_t* optStart, size_t* optL
     throw std::runtime_error("Invalid values passed to locateEDNSOptRR");
   }
 
+  if (packet.size() < sizeof(dnsheader)) {
+    throw std::runtime_error("Packet passed to locateEDNSOptRR was too small");
+  }
+
   const dnsheader_aligned dnsHeader(packet.data());
 
   if (ntohs(dnsHeader->arcount) == 0) {
     return ENOENT;
+  }
+
+  if (ntohs(dnsHeader->qdcount) != 1) {
+    throw std::runtime_error("Packet passed to locateEDNSOptRR did not have QDCOUNT=1");
   }
 
   // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
@@ -276,22 +291,14 @@ int locateEDNSOptRR(const PacketBuffer& packet, uint16_t* optStart, size_t* optL
 
   size_t idx = 0;
   DNSName rrname;
-  uint16_t qdcount = ntohs(dnsHeader->qdcount);
   uint16_t ancount = ntohs(dnsHeader->ancount);
   uint16_t nscount = ntohs(dnsHeader->nscount);
   uint16_t arcount = ntohs(dnsHeader->arcount);
-  uint16_t rrtype{};
-  uint16_t rrclass{};
   dnsrecordheader recordHeader{};
 
-  /* consume qd */
-  for (idx = 0; idx < qdcount; idx++) {
-    rrname = packetReader.getName();
-    rrtype = packetReader.get16BitInt();
-    rrclass = packetReader.get16BitInt();
-    (void)rrtype;
-    (void)rrclass;
-  }
+  /* consume query section */
+  rrname = packetReader.getName();
+  packetReader.skip(4); // Skip Type and Class
 
   /* consume AN and NS */
   for (idx = 0; idx < ancount + nscount; idx++) {
@@ -306,7 +313,7 @@ int locateEDNSOptRR(const PacketBuffer& packet, uint16_t* optStart, size_t* optL
     rrname = packetReader.getName();
     packetReader.getDnsrecordheader(recordHeader);
 
-    if (recordHeader.d_type == QType::OPT) {
+    if (rrname == g_rootdnsname && recordHeader.d_type == QType::OPT) {
       *optStart = start;
       *optLen = (packetReader.getPosition() - start) + recordHeader.d_clen;
 
@@ -464,23 +471,20 @@ static bool replaceEDNSClientSubnetOption(PacketBuffer& packet, size_t maximumSi
 
 /* This function looks for an OPT RR, return true if a valid one was found (even if there was no options)
    and false otherwise. */
-bool parseEDNSOptions(const DNSQuestion& dnsQuestion)
+std::optional<EDNSOptionViewMap> parseEDNSOptions(const DNSQuestion& dnsQuestion)
 {
+  EDNSOptionViewMap ednsOptions{};
   const auto dnsHeader = dnsQuestion.getHeader();
-  if (dnsQuestion.ednsOptions != nullptr) {
-    return true;
-  }
-
-  // dnsQuestion.ednsOptions is mutable
-  dnsQuestion.ednsOptions = std::make_unique<EDNSOptionViewMap>();
-
   if (ntohs(dnsHeader->arcount) == 0) {
     /* nothing in additional so no EDNS */
-    return false;
+    return std::nullopt;
   }
 
   if (ntohs(dnsHeader->ancount) != 0 || ntohs(dnsHeader->nscount) != 0 || ntohs(dnsHeader->arcount) > 1) {
-    return slowParseEDNSOptions(dnsQuestion.getData(), *dnsQuestion.ednsOptions);
+    if (slowParseEDNSOptions(dnsQuestion.getData(), ednsOptions)) {
+      return ednsOptions;
+    }
+    return std::nullopt;
   }
 
   size_t remaining = 0;
@@ -489,11 +493,14 @@ bool parseEDNSOptions(const DNSQuestion& dnsQuestion)
 
   if (res == 0) {
     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-    res = getEDNSOptions(reinterpret_cast<const char*>(&dnsQuestion.getData().at(optRDPosition)), remaining, *dnsQuestion.ednsOptions);
-    return (res == 0);
+    res = getEDNSOptions(reinterpret_cast<const char*>(&dnsQuestion.getData().at(optRDPosition)), remaining, ednsOptions);
+    if (res != 0) {
+      return std::nullopt;
+    }
+    return ednsOptions;
   }
 
-  return false;
+  return std::nullopt;
 }
 
 static bool addECSToExistingOPT(PacketBuffer& packet, size_t maximumSize, const string& newECSOption, size_t optRDLenPosition, bool& ecsAdded)

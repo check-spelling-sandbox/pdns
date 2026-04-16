@@ -161,7 +161,15 @@ boilerplate_conv(TXT, conv.xfrText(d_text, true));
 #ifdef HAVE_LUA_RECORDS
 boilerplate_conv(LUA, conv.xfrType(d_type); conv.xfrText(d_code, true));
 #endif
+#if defined(PDNS_AUTH) // [
+/* Move the position to the end of the current DNS record,
+   because of a bug in the authoritative server used to insert
+   non-empty content for some ENT records (see https://github.com/PowerDNS/pdns/pull/17000)
+*/
+boilerplate_conv(ENT, conv.consumeRemaining());
+#else
 boilerplate_conv(ENT, );
+#endif // ]
 boilerplate_conv(SPF, conv.xfrText(d_text, true));
 boilerplate_conv(HINFO, conv.xfrText(d_cpu);   conv.xfrText(d_host));
 
@@ -175,6 +183,10 @@ boilerplate_conv(OPT,
                    conv.xfrBlob(d_data)
                  );
 //NOLINTEND
+
+// NOLINTBEGIN
+boilerplate_conv(WALLET, conv.xfrText(d_text, true));
+// NOLINTEND
 
 #ifdef HAVE_LUA_RECORDS
 
@@ -875,7 +887,6 @@ boilerplate_conv(TKEY,
                  conv.xfr16BitInt(d_othersize);
                  if (d_othersize>0) conv.xfrBlobNoSpaces(d_other, d_othersize);
                  )
-TKEYRecordContent::TKEYRecordContent() { d_othersize = 0; } // fix CID#1288932
 
 boilerplate_conv(URI,
                  conv.xfr16BitInt(d_priority);
@@ -1017,6 +1028,7 @@ static void reportOtherTypes(const ReportIsOnlyCallableByReportAllTypes& guard)
    L32RecordContent::report(guard);
    L64RecordContent::report(guard);
    LPRecordContent::report(guard);
+   WALLETRecordContent::report(guard);
    ZONEMDRecordContent::report(guard);
 }
 

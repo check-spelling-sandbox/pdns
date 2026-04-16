@@ -29,6 +29,7 @@
 
 #include "config.h"
 #include "dnsdist-configuration.hh"
+#include "dnsdist-opentelemetry.hh"
 #include "dnsdist.hh"
 #include "dnsdist-async.hh"
 #include "dnsdist-dnsparser.hh"
@@ -1593,22 +1594,55 @@ namespace
     }
   }
 
-  void addTagsToProtobuf(DNSDistProtoBufMessage& message, const DNSQuestion& dnsquestion, const std::unordered_set<std::string>& allowed)
+  std::string stripPrefix(const std::string& key, const std::string& matchedPrefix)
   {
-    if (!dnsquestion.ids.qTag) {
+    return key.substr(matchedPrefix.length());
+  }
+
+  void addTagsToProtobuf(DNSDistProtoBufMessage& message, const QTag& tags, const std::optional<std::unordered_set<std::string>>& allowedKeys, const std::unordered_set<std::string>& allowedPrefixes, bool keyOnly, bool stripPrefixes)
+  {
+    if (!allowedKeys && allowedPrefixes.empty()) {
       return;
     }
 
-    for (const auto& [key, value] : *dnsquestion.ids.qTag) {
-      if (!allowed.empty() && allowed.count(key) == 0) {
+    for (const auto& [key, value] : tags) {
+      bool match = false;
+      std::optional<std::string> matchedPrefix{std::nullopt};
+      // careful here: allowedKeys being set (not nullopt) but empty means "*": all values are accepted
+      if (allowedKeys && (allowedKeys->empty() || allowedKeys->count(key) != 0)) {
+        match = true;
+      }
+      else if (!allowedPrefixes.empty()) {
+        for (const auto& prefix : allowedPrefixes) {
+          if (boost::starts_with(key, prefix)) {
+            match = true;
+            if (stripPrefixes) {
+              matchedPrefix = prefix;
+            }
+          }
+        }
+      }
+
+      if (!match) {
         continue;
       }
 
-      if (value.empty()) {
-        message.addTag(key);
+      if (value.empty() || keyOnly) {
+        if (stripPrefixes && matchedPrefix) {
+          message.addTag(stripPrefix(key, *matchedPrefix));
+        }
+        else {
+          message.addTag(key);
+        }
       }
       else {
-        auto tag = key;
+        std::string tag;
+        if (stripPrefixes && matchedPrefix) {
+          tag = stripPrefix(key, *matchedPrefix);
+        }
+        else {
+          tag = key;
+        }
         tag.append(":");
         tag.append(value);
         message.addTag(tag);
@@ -1636,11 +1670,11 @@ class RemoteLogAction : public DNSAction, public boost::noncopyable
 {
 public:
   // this action does not stop the processing
-  RemoteLogAction(RemoteLogActionConfiguration& config) :
-    d_tagsToExport(std::move(config.tagsToExport)), d_metas(std::move(config.metas)), d_logger(config.logger), d_alterFunc(std::move(config.alterQueryFunc)), d_serverID(config.serverID), d_ipEncryptKey(config.ipEncryptKey), d_ipEncryptMethod(config.ipEncryptMethod), d_useServerID(config.useServerID)
+  RemoteLogAction(RemoteLogActionConfiguration&& config) :
+    d_config(std::move(config))
   {
-    if (!d_ipEncryptKey.empty() && d_ipEncryptMethod == "ipcrypt-pfx") {
-      d_ipcrypt2 = pdns::ipcrypt2::IPCrypt2(pdns::ipcrypt2::IPCryptMethod::pfx, d_ipEncryptKey);
+    if (!d_config.ipEncryptKey.empty() && d_config.ipEncryptMethod == "ipcrypt-pfx") {
+      d_ipcrypt2 = pdns::ipcrypt2::IPCrypt2(pdns::ipcrypt2::IPCryptMethod::pfx, d_config.ipEncryptKey);
     }
   }
 
@@ -1655,16 +1689,16 @@ public:
     }
 
     DNSDistProtoBufMessage message(*dnsquestion);
-    if (d_useServerID) {
+    if (d_config.useServerID) {
       message.setServerIdentity(dnsdist::configuration::getCurrentRuntimeConfiguration().d_server_id);
     }
-    else if (!d_serverID.empty()) {
-      message.setServerIdentity(d_serverID);
+    else if (!d_config.serverID.empty()) {
+      message.setServerIdentity(d_config.serverID);
     }
 
 #ifdef HAVE_IPCIPHER
-    if (!d_ipEncryptKey.empty() && d_ipEncryptMethod == "legacy") {
-      message.setRequestor(encryptCA(dnsquestion->ids.origRemote, d_ipEncryptKey));
+    if (!d_config.ipEncryptKey.empty() && d_config.ipEncryptMethod == "legacy") {
+      message.setRequestor(encryptCA(dnsquestion->ids.origRemote, d_config.ipEncryptKey));
     }
 #endif /* HAVE_IPCIPHER */
     if (d_ipcrypt2) {
@@ -1673,15 +1707,15 @@ public:
       message.setRequestor(encryptedAddress);
     }
 
-    if (d_tagsToExport) {
-      addTagsToProtobuf(message, *dnsquestion, *d_tagsToExport);
+    if (dnsquestion->ids.qTag) {
+      addTagsToProtobuf(message, *dnsquestion->ids.qTag, d_config.tagsToExport, d_config.tagsPrefixesToExport, d_config.tagsExportKeyOnly, d_config.tagsStripPrefixes);
     }
 
-    addMetaDataToProtobuf(message, *dnsquestion, d_metas);
+    addMetaDataToProtobuf(message, *dnsquestion, d_config.metas);
 
-    if (d_alterFunc) {
+    if (d_config.alterQueryFunc) {
       auto lock = g_lua.lock();
-      (*d_alterFunc)(dnsquestion, &message);
+      (*d_config.alterQueryFunc)(dnsquestion, &message);
     }
 
     static thread_local std::string data;
@@ -1690,25 +1724,18 @@ public:
     if (!dnsquestion->ids.d_rawProtobufContent.empty()) {
       data.insert(data.end(), dnsquestion->ids.d_rawProtobufContent.begin(), dnsquestion->ids.d_rawProtobufContent.end());
     }
-    remoteLoggerQueueData(*d_logger, data);
+    remoteLoggerQueueData(*d_config.logger, data);
 
     return Action::None;
   }
   [[nodiscard]] std::string toString() const override
   {
-    return "remote log to " + (d_logger ? d_logger->toString() : "");
+    return "remote log to " + (d_config.logger ? d_config.logger->toString() : "");
   }
 
 private:
-  std::optional<std::unordered_set<std::string>> d_tagsToExport;
-  std::vector<std::pair<std::string, ProtoBufMetaKey>> d_metas;
-  std::shared_ptr<RemoteLoggerInterface> d_logger;
-  std::optional<std::function<void(DNSQuestion*, DNSDistProtoBufMessage*)>> d_alterFunc;
-  std::string d_serverID;
-  std::string d_ipEncryptKey;
-  std::string d_ipEncryptMethod;
+  RemoteLogActionConfiguration d_config;
   std::optional<pdns::ipcrypt2::IPCrypt2> d_ipcrypt2{std::nullopt};
-  bool d_useServerID;
 };
 #endif /* DISABLE_PROTOBUF */
 
@@ -1741,6 +1768,7 @@ public:
     tracer->setRootSpanAttribute("query.qtype", AnyValue{QType(dnsquestion->ids.qtype).toString()});
     tracer->setRootSpanAttribute("query.remote.address", AnyValue{dnsquestion->ids.origRemote.toString()});
     tracer->setRootSpanAttribute("query.remote.port", AnyValue{dnsquestion->ids.origRemote.getPort()});
+    tracer->setTraceAttribute("instance", AnyValue{dnsdist::configuration::getCurrentRuntimeConfiguration().d_server_id});
 
     if (d_sendDownstreamTraceparent) {
       dnsquestion->ids.sendTraceParentToDownstreamID = d_traceparentOptionCode;
@@ -1752,21 +1780,16 @@ public:
     }
 
     // We need to check if EDNS Options exist
-    if (dnsquestion->ednsOptions == nullptr && !parseEDNSOptions(*dnsquestion)) {
+    auto ednsOptions = parseEDNSOptions(*dnsquestion);
+    if (!ednsOptions) {
       // Maybe parsed, but no EDNS found
-      return Action::None;
-    }
-    if (dnsquestion->ednsOptions == nullptr) {
-      // Parsing failed, log a warning and return
-      VERBOSESLOG(infolog("parsing EDNS options failed while looking for OpenTelemetry Trace ID"),
-                  dnsquestion->getLogger()->info(Logr::Info, "Parsing EDNS options failed while looking for OpenTelemetry Trace ID"));
       return Action::None;
     }
 
     if (d_useIncomingTraceparent) {
       pdns::trace::TraceID traceID;
       pdns::trace::SpanID spanID;
-      if (pdns::trace::extractOTraceIDs(*(dnsquestion->ednsOptions), EDNSOptionCode::EDNSOptionCodeEnum(d_traceparentOptionCode), traceID, spanID)) {
+      if (pdns::trace::extractOTraceIDs(*(ednsOptions), EDNSOptionCode::EDNSOptionCodeEnum(d_traceparentOptionCode), traceID, spanID)) {
         tracer->setTraceID(traceID);
         if (spanID != pdns::trace::s_emptySpanID) {
           tracer->setRootSpanID(spanID);
@@ -1793,8 +1816,6 @@ public:
       size_t existingOptLen = optLen;
       removeEDNSOptionFromOPT(reinterpret_cast<char*>(&dnsquestion->getMutableData().at(optStart)), &optLen, d_traceparentOptionCode);
       dnsquestion->getMutableData().resize(dnsquestion->getData().size() - (existingOptLen - optLen));
-      // Ensure the EDNS Option View is not out of date
-      dnsquestion->ednsOptions.reset();
     }
 
     return Action::None;
@@ -1938,11 +1959,11 @@ class RemoteLogResponseAction : public DNSResponseAction, public boost::noncopya
 {
 public:
   // this action does not stop the processing
-  RemoteLogResponseAction(RemoteLogActionConfiguration& config) :
-    d_tagsToExport(std::move(config.tagsToExport)), d_metas(std::move(config.metas)), d_logger(config.logger), d_alterFunc(std::move(config.alterResponseFunc)), d_serverID(config.serverID), d_ipEncryptKey(config.ipEncryptKey), d_ipEncryptMethod(config.ipEncryptMethod), d_exportExtendedErrorsToMeta(std::move(config.exportExtendedErrorsToMeta)), d_includeCNAME(config.includeCNAME), d_useServerID(config.useServerID), d_delay(config.delay)
+  RemoteLogResponseAction(RemoteLogActionConfiguration&& config) :
+    d_config(std::move(config))
   {
-    if (!d_ipEncryptKey.empty() && d_ipEncryptMethod == "ipcrypt-pfx") {
-      d_ipcrypt2 = pdns::ipcrypt2::IPCrypt2(pdns::ipcrypt2::IPCryptMethod::pfx, d_ipEncryptKey);
+    if (!d_config.ipEncryptKey.empty() && d_config.ipEncryptMethod == "ipcrypt-pfx") {
+      d_ipcrypt2 = pdns::ipcrypt2::IPCrypt2(pdns::ipcrypt2::IPCryptMethod::pfx, d_config.ipEncryptKey);
     }
   }
   DNSResponseAction::Action operator()(DNSResponse* response, std::string* ruleresult) const override
@@ -1955,17 +1976,17 @@ public:
       response->ids.d_protoBufData->uniqueId = getUniqueID();
     }
 
-    DNSDistProtoBufMessage message(*response, d_includeCNAME);
-    if (d_useServerID) {
+    DNSDistProtoBufMessage message(*response, d_config.includeCNAME);
+    if (d_config.useServerID) {
       message.setServerIdentity(dnsdist::configuration::getCurrentRuntimeConfiguration().d_server_id);
     }
-    else if (!d_serverID.empty()) {
-      message.setServerIdentity(d_serverID);
+    else if (!d_config.serverID.empty()) {
+      message.setServerIdentity(d_config.serverID);
     }
 
 #ifdef HAVE_IPCIPHER
-    if (!d_ipEncryptKey.empty() && d_ipEncryptMethod == "legacy") {
-      message.setRequestor(encryptCA(response->ids.origRemote, d_ipEncryptKey));
+    if (!d_config.ipEncryptKey.empty() && d_config.ipEncryptMethod == "legacy") {
+      message.setRequestor(encryptCA(response->ids.origRemote, d_config.ipEncryptKey));
     }
 #endif /* HAVE_IPCIPHER */
     if (d_ipcrypt2) {
@@ -1974,56 +1995,46 @@ public:
       message.setRequestor(encryptedAddress);
     }
 
-    if (d_tagsToExport) {
-      addTagsToProtobuf(message, *response, *d_tagsToExport);
+    if (response->ids.qTag) {
+      addTagsToProtobuf(message, *response->ids.qTag, d_config.tagsToExport, d_config.tagsPrefixesToExport, d_config.tagsExportKeyOnly, d_config.tagsStripPrefixes);
     }
 
-    addMetaDataToProtobuf(message, *response, d_metas);
+    addMetaDataToProtobuf(message, *response, d_config.metas);
 
-    if (d_exportExtendedErrorsToMeta) {
-      addExtendedDNSErrorToProtobuf(message, *response, *d_exportExtendedErrorsToMeta);
+    if (d_config.exportExtendedErrorsToMeta) {
+      addExtendedDNSErrorToProtobuf(message, *response, *d_config.exportExtendedErrorsToMeta);
     }
 
-    if (d_alterFunc) {
+    if (d_config.alterResponseFunc) {
       auto lock = g_lua.lock();
-      (*d_alterFunc)(response, &message);
+      (*d_config.alterResponseFunc)(response, &message);
     }
 
     static thread_local std::string data;
     data.clear();
-    message.serialize(data, !d_delay);
+    message.serialize(data, !d_config.delay);
 
     if (!response->ids.d_rawProtobufContent.empty()) {
       data.insert(data.end(), response->ids.d_rawProtobufContent.begin(), response->ids.d_rawProtobufContent.end());
     }
 
-    if (d_delay) {
-      response->ids.delayedResponseMsgs.emplace_back(data, std::shared_ptr<RemoteLoggerInterface>(d_logger));
+    if (d_config.delay) {
+      response->ids.delayedResponseMsgs.emplace_back(data, std::shared_ptr<RemoteLoggerInterface>(d_config.logger));
     }
     else {
-      d_logger->queueData(data);
+      d_config.logger->queueData(data);
     }
 
     return Action::None;
   }
   [[nodiscard]] std::string toString() const override
   {
-    return "remote log response to " + (d_logger ? d_logger->toString() : "");
+    return "remote log response to " + (d_config.logger ? d_config.logger->toString() : "");
   }
 
 private:
-  std::optional<std::unordered_set<std::string>> d_tagsToExport;
-  std::vector<std::pair<std::string, ProtoBufMetaKey>> d_metas;
-  std::shared_ptr<RemoteLoggerInterface> d_logger;
-  std::optional<std::function<void(DNSResponse*, DNSDistProtoBufMessage*)>> d_alterFunc;
-  std::string d_serverID;
-  std::string d_ipEncryptKey;
-  std::string d_ipEncryptMethod;
+  RemoteLogActionConfiguration d_config;
   std::optional<pdns::ipcrypt2::IPCrypt2> d_ipcrypt2{std::nullopt};
-  std::optional<std::string> d_exportExtendedErrorsToMeta{std::nullopt};
-  bool d_includeCNAME;
-  bool d_useServerID{false};
-  bool d_delay{false};
 };
 
 #endif /* DISABLE_PROTOBUF */
@@ -2669,14 +2680,14 @@ std::shared_ptr<DNSAction> getSetTraceAction(SetTraceActionConfiguration& config
   return std::shared_ptr<DNSAction>(new SetTraceAction(config));
 }
 
-std::shared_ptr<DNSAction> getRemoteLogAction(RemoteLogActionConfiguration& config)
+std::shared_ptr<DNSAction> getRemoteLogAction(RemoteLogActionConfiguration&& config)
 {
-  return std::shared_ptr<DNSAction>(new RemoteLogAction(config));
+  return std::shared_ptr<DNSAction>(new RemoteLogAction(std::move(config)));
 }
 
-std::shared_ptr<DNSResponseAction> getRemoteLogResponseAction(RemoteLogActionConfiguration& config)
+std::shared_ptr<DNSResponseAction> getRemoteLogResponseAction(RemoteLogActionConfiguration&& config)
 {
-  return std::shared_ptr<DNSResponseAction>(new RemoteLogResponseAction(config));
+  return std::shared_ptr<DNSResponseAction>(new RemoteLogResponseAction(std::move(config)));
 }
 
 std::shared_ptr<DNSAction> getDnstapLogAction(const std::string& identity, std::shared_ptr<RemoteLoggerInterface> logger, std::optional<DnstapAlterFunction> alterFunc)

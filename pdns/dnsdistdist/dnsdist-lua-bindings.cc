@@ -390,7 +390,7 @@ void setupLuaBindings(LuaContext& luaCtx, bool client, bool configCheck)
       throw std::runtime_error("setHealthCheckResponseValidator cannot be used at configuration time!");
       return;
     }
-    state->d_config.d_healthCheckResponseValidationCallback = validator;
+    state->d_config.d_healthCheckResponseValidationCallback = std::move(validator);
   });
 #endif /* DISABLE_DOWNSTREAM_BINDINGS */
 
@@ -1028,17 +1028,12 @@ void setupLuaBindings(LuaContext& luaCtx, bool client, bool configCheck)
     return xsk->getMetrics();
   });
 #endif /* HAVE_XSK */
-  /* EDNSOptionView */
-  luaCtx.registerFunction<size_t (EDNSOptionView::*)() const>("count", [](const EDNSOptionView& option) {
-    return option.values.size();
+  /* EDNSOptionValues */
+  luaCtx.registerFunction<size_t (EDNSOptionValues::*)() const>("count", [](const EDNSOptionValues& values) {
+    return values.values.size();
   });
-  luaCtx.registerFunction<std::vector<string> (EDNSOptionView::*)() const>("getValues", [](const EDNSOptionView& option) {
-    std::vector<string> values;
-    values.reserve(values.size());
-    for (const auto& value : option.values) {
-      values.emplace_back(value.content, value.size);
-    }
-    return values;
+  luaCtx.registerFunction<std::vector<string> (EDNSOptionValues::*)() const>("getValues", [](const EDNSOptionValues& values) -> std::vector<string> {
+    return values.values;
   });
 
   luaCtx.writeFunction("newDOHResponseMapEntry", [](const std::string& regex, uint64_t status, const std::string& content, std::optional<LuaAssociativeTable<std::string>> customHeaders) {

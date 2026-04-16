@@ -359,21 +359,21 @@ if not fs.is_file(libpdns_dnslabeltext_gen)
   libpdns_dnslabeltext_gen = ragel_generator.process(libpdns_dnslabeltext_source)
 endif
 
-libpdns_apidocfiles_source = 'docs' / 'http-api' / 'swagger' / 'authoritative-api-swagger.yaml'
+libpdns_apidocfiles_source = 'docs' / 'http-api' / 'openapi' / 'authoritative-api-openapi.yaml'
 libpdns_apidocfiles_gen    = src_dir / 'apidocfiles.h'
-generate_api_swagger_py    = src_dir / 'generate-api-swagger.py'
+generate_api_openapi_py    = src_dir / 'generate-api-openapi.py'
 if not fs.is_file(libpdns_apidocfiles_gen)
   py = import('python')
   python = py.find_installation('python3', modules: 'yaml', required: true)
 
-  summary('Python', python.found(), bool_yn: true, section: 'Swagger API')
-  summary('Path', python.full_path(), section: 'Swagger API')
-  summary('Version', python.version(), section: 'Swagger API')
+  summary('Python', python.found(), bool_yn: true, section: 'Openapi API')
+  summary('Path', python.full_path(), section: 'Openapi API')
+  summary('Version', python.version(), section: 'Openapi API')
 
   libpdns_apidocfiles_gen = custom_target(
     'pdns-apidocfiles-h',
     command: [python, '@INPUT0@', '@INPUT1@'],
-    input: [generate_api_swagger_py, libpdns_apidocfiles_source],
+    input: [generate_api_openapi_py, libpdns_apidocfiles_source],
     output: 'apidocfiles.h',
     capture: true,
   )
@@ -695,6 +695,7 @@ tools = {
       libpdns_signers_sodium,
     ],
     'manpages': ['pdns_server.1'],
+    'install_dir': get_option('sbindir'),
   },
   'pdnsutil': {
     'main': src_dir / 'pdnsutil.cc',
@@ -1000,6 +1001,7 @@ foreach tool, info: tools
   deps_extra = 'deps-extra' in info ? info['deps-extra'] : []
   link_args = 'link-args' in info ? info['link-args'] : []
   install = 'install' in info ? info['install'] : true
+  install_dir = 'install_dir' in info ? info['install_dir'] : get_option('bindir')
 
   set_variable(
     var_name,
@@ -1017,6 +1019,7 @@ foreach tool, info: tools
         deps_extra,
       ],
       install: install,
+      install_dir: install_dir,
     )
   )
 
@@ -1061,7 +1064,7 @@ if python.found()
         else
           install_man(
             'docs' / man_page,
-            install_dir: join_paths(get_option('mandir'), 'man1'),
+            install_dir: man_page.endswith('.5') ? join_paths(get_option('mandir'), 'man5') : join_paths(get_option('mandir'), 'man1'),
           )
         endif
       endforeach
@@ -1074,6 +1077,7 @@ if python.found()
      input: man_pages,
      output: generated_man_pages,
      install: true,
+     # wrong for ixfrdist.yml.5 but I don't know how to handle that
      install_dir: join_paths(get_option('mandir'), 'man1'),
      command: [
        python,
@@ -1180,6 +1184,20 @@ if get_option('unit-tests-backends')
 endif
 
 if python.found()
+  json_schema = custom_target(
+    'auth-json-schema',
+    input: product_source_dir / docs_dir / 'http-api' / 'openapi' / 'authoritative-api-openapi.yaml',
+    output: 'auth-schema-generated.stamp',
+    command: [
+      python,
+      product_source_dir / docs_dir / 'generate-jsonschema.py',
+      '@INPUT@',
+      product_source_dir / docs_dir / 'http-api' / 'openapi' / 'authoritative-api-schema.yaml',
+      '--stampfile',
+      '@OUTPUT@'
+    ],
+  )
+
   html_docs = custom_target(
     'html-docs',
     command: [
@@ -1195,6 +1213,7 @@ if python.found()
     output: 'sphinx.stamp',
     console: true,
     depfile: 'sphinx.d',
+    depends: [json_schema],
   )
 
   docs_tarball = custom_target(
@@ -1218,6 +1237,7 @@ if python.found()
     output: 'PowerDNS-Authoritative.pdf',
     console: true,
     depfile: 'sphinx.d',
+    depends: [json_schema],
   )
 
   run_target(

@@ -198,6 +198,7 @@ common_sources += files(
   src_dir / 'ednscookies.cc',
   src_dir / 'ednsextendederror.cc',
   src_dir / 'ednsoptions.cc',
+  src_dir / 'ednspadding.cc',
   src_dir / 'ednssubnet.cc',
   src_dir / 'gettime.cc',
   src_dir / 'iputils.cc',
@@ -597,6 +598,7 @@ endif
 
 benchmark_sources = files(
   src_dir / 'bench-dnsdist-action-rcode.cc',
+  src_dir / 'bench-dnsdist-cache.cc',
   src_dir / 'bench-dnsdist-dnsparser_cc.cc',
   src_dir / 'bench-dnsdist-opentelemetry_cc.cc',
   src_dir / 'bench-dnsdist-rings_cc.cc',
@@ -624,6 +626,7 @@ if get_option('benchmark')
         dep_ffi_interface,
         dep_lua,
         dep_protozero,
+        dep_libsystemd,
       ],
     }
   }

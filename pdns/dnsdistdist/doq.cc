@@ -505,7 +505,7 @@ static void processDOQQuery(DOQUnitUniquePtr&& doqUnit)
       if (unit->response.size() >= sizeof(dnsheader)) {
         const dnsheader_aligned dnsHeader(unit->response.data());
 
-        handleResponseSent(unit->ids.qname, QType(unit->ids.qtype), 0., unit->ids.origRemote, ComboAddress(), unit->response.size(), *dnsHeader, dnsdist::Protocol::DoQ, dnsdist::Protocol::DoQ, false);
+        handleResponseSent(DNSName(unit->ids.qname), QType(unit->ids.qtype), 0., unit->ids.origRemote, ComboAddress(), unit->response.size(), *dnsHeader, dnsdist::Protocol::DoQ, dnsdist::Protocol::DoQ, false);
       }
       handleImmediateResponse(std::move(unit), "DoQ self-answered response");
       return;
@@ -545,9 +545,11 @@ static void processDOQQuery(DOQUnitUniquePtr&& doqUnit)
     if (downstream->passCrossProtocolQuery(std::move(cpq))) {
       return;
     }
-    // NOLINTNEXTLINE(bugprone-use-after-move): it was only moved if the call succeeded
-    unit = cpq->releaseDU();
-    handleImmediateResponse(std::move(unit), "DoQ internal error");
+    /* On exceptional cases, cpq is moved but returns false above. So we check to make sure. See https://github.com/PowerDNS/pdns/issues/17109 */
+    if (cpq) {
+      unit = cpq->releaseDU();
+      handleImmediateResponse(std::move(unit), "DoQ internal error");
+    }
     return;
   }
   catch (const std::exception& e) {
@@ -644,6 +646,16 @@ static void handleReadableStream(DOQFrontend& frontend, ClientState& clientState
       return;
     }
     if (received < 0) {
+      ++dnsdist::metrics::g_stats.nonCompliantQueries;
+      ++clientState.nonCompliantQueries;
+      quiche_conn_stream_shutdown(conn.d_conn.get(), streamID, QUICHE_SHUTDOWN_WRITE, static_cast<uint64_t>(DOQ_Error_Codes::DOQ_PROTOCOL_ERROR));
+      return;
+    }
+
+    if (received > std::numeric_limits<uint16_t>::max() || (std::numeric_limits<uint16_t>::max() - streamBuffer.size()) < static_cast<size_t>(received)) {
+      VERBOSESLOG(infolog("DoQ data frame of size %d is too large for a DNS query (we already have %d)", received, streamBuffer.size()),
+                  frontend.d_logger->info(Logr::Info, "DoQ data frame is too large for a DNS query", "stream_id", Logging::Loggable(streamID), "frame_size", Logging::Loggable(received), "existing_payload_size", Logging::Loggable(streamBuffer.size())));
+      conn.d_streamBuffers.erase(streamID);
       ++dnsdist::metrics::g_stats.nonCompliantQueries;
       ++clientState.nonCompliantQueries;
       quiche_conn_stream_shutdown(conn.d_conn.get(), streamID, QUICHE_SHUTDOWN_WRITE, static_cast<uint64_t>(DOQ_Error_Codes::DOQ_PROTOCOL_ERROR));

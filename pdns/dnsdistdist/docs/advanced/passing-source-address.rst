@@ -53,12 +53,12 @@ If :func:`setProxyProtocolApplyACLToProxiedClients` is set (default is false), t
 Passing additional information
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Custom values can be added to the header via :meth:`DNSQuestion:addProxyProtocolValue`, :meth:`DNSQuestion:setProxyProtocolValues`, :func:`SetAdditionalProxyProtocolValueAction` and :func:`SetProxyProtocolValuesAction`.
+Custom values can be added to the header via :meth:`DNSQuestion.addProxyProtocolValue`, :meth:`DNSQuestion.setProxyProtocolValues`, :func:`SetAdditionalProxyProtocolValueAction` and :func:`SetProxyProtocolValuesAction`.
 
 Be careful that Proxy Protocol values are sent once at the beginning of the TCP connection for TCP and DoT queries.
 That means that values received on an incoming TCP connection will be inherited by subsequent queries received over the same incoming TCP connection, if any, but values set to a query will not be inherited by subsequent queries.
 
-Please also note that the maximum size of a Proxy Protocol header dnsdist is willing to accept is 512 bytes by default, although it can be set via :func:`setProxyProtocolMaximumPayloadSize`.
+Also note that the maximum size of a Proxy Protocol header dnsdist is willing to accept is 512 bytes by default, although it can be set via :func:`setProxyProtocolMaximumPayloadSize`.
 
 .. _EDNS Client Subnet:
 

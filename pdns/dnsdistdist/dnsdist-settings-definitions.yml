@@ -412,7 +412,7 @@ key_value_stores:
 webserver:
   changes:
     - version: 2.1.0
-      content: "Added the ``prometheus_add_instance`` option"
+      content: "Added the ``prometheus_add_instance`` and ``allow_cross_origin_requests`` options"
   parameters:
     - name: "listen_addresses"
       type: "Vec<String>"
@@ -430,6 +430,10 @@ webserver:
       type: "Vec<String>"
       default: "127.0.0.1, ::1"
       description: "List of network masks or IP addresses that are allowed to open a connection to the web server"
+    - name: "allow_cross_origin_requests"
+      type: "bool"
+      default: "false"
+      description: "Whether the webserver allows cross-origin HTTP requests. This might allow a malicious website to read metrics provided by the API if a user's browser has valid credentials cached for the webserver while the user visits the malicious website"
     - name: "api_requires_authentication"
       type: "bool"
       default: "true"
@@ -1140,6 +1144,10 @@ bind:
       type: "bool"
       default: "true"
       description: "Whether to expect a proxy protocol v2 header in front of incoming queries coming from an address allowed by the ACL in :ref:`yaml-settings-ProxyProtocolConfiguration`. Default is ``true``, meaning that queries are expected to have a proxy protocol payload if they come from an address present in the proxy protocol ACL"
+    - name: "pad_responses"
+      type: "bool"
+      default: "false"
+      description: "Whether to pad DNS responses as specified in RFC 7830."
     - name: "tcp"
       type: "IncomingTcpConfiguration"
       default: true
@@ -1840,15 +1848,27 @@ structured_logging:
       description: |
         The backend used for structured logging output. See :doc:`../advanced/structured-logging-dictionary` for more details. Available backends are:
 
-        * ``default``: use the traditional logging system to output structured logging information.
-        * ``systemd-journal``: use ``systemd-journal``. When using this backend, provide ``-o verbose`` or simular output option to ``journalctl`` to view the full information.
-        * ``json``: JSON objects are written to the standard error stream.
+          * ``default``: use the traditional logging system to output structured logging information.
+          * ``systemd-journal``: use ``systemd-journal``. When using this backend, provide ``-o verbose`` or simular output option to ``journalctl`` to view the full information.
+          * ``json``: JSON objects are written to the standard error stream.
     - name: "set_instance_from_server_id"
       type: "bool"
       default: "false"
       description: |
         Add a field "instance" to each log line with the value of ``general.server_id``.
       version_added: 2.1.0
+
+open_telemetry_tracing:
+  category: "logging.open_telemetry_tracing"
+  description: "OpenTelemetry Trace settings"
+  parameters:
+    - name: "enabled"
+      type: "bool"
+      default: "false"
+      runtime-configurable: true
+      lua-name: "setOpenTelemetryTracing"
+      internal-field-name: "d_openTelemetryTracing"
+      description: "Set to true to enable OpenTelemetry tracing. When true, the :func:`DNSQuestion:setTrace` makes the query store tracing information (see :doc:`OpenTelemetry tracing <ottrace>`). When this setting is false, no tracing information is gathered at all."
 
 logging:
   description: "Logging settings"
@@ -1924,12 +1944,8 @@ logging:
       type: "StructuredLoggingConfiguration"
       default: true
     - name: "open_telemetry_tracing"
-      type: "bool"
-      default: "false"
-      lua-name: "setOpenTelemetryTracing"
-      internal-field-name: "d_openTelemetryTracing"
-      runtime-configurable: true
-      description: "Set to true to enable OpenTelemetry tracing. When true, the :func:`DNSQuestion:setTrace` makes the query store tracing information (see :doc:`OpenTelemetry tracing <ottrace>`). When this setting is false, no tracing information is gathered at all."
+      type: "OpenTelemetryTracingConfiguration"
+      default: true
 
 general:
   description: "General settings"

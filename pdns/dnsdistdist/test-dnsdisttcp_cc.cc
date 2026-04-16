@@ -59,7 +59,7 @@ uint64_t uptimeOfProcess(const std::string& str)
   return 0;
 }
 
-void handleResponseSent(const InternalQueryState& ids, double udiff, const ComboAddress& client, const ComboAddress& backend, unsigned int size, const dnsheader& cleartextDH, dnsdist::Protocol protocol, bool fromBackend)
+void handleResponseSent(InternalQueryState& ids, double udiff, const ComboAddress& client, const ComboAddress& backend, unsigned int size, const dnsheader& cleartextDH, dnsdist::Protocol protocol, bool fromBackend)
 {
   (void)ids;
   (void)udiff;
@@ -71,7 +71,7 @@ void handleResponseSent(const InternalQueryState& ids, double udiff, const Combo
   (void)fromBackend;
 }
 
-void handleResponseSent(const DNSName& qname, const QType& qtype, double udiff, const ComboAddress& client, const ComboAddress& backend, unsigned int size, const dnsheader& cleartextDH, dnsdist::Protocol outgoingProtocol, dnsdist::Protocol incomingProtocol, bool fromBackend)
+void handleResponseSent(DNSName&& qname, const QType& qtype, double udiff, const ComboAddress& client, const ComboAddress& backend, unsigned int size, const dnsheader& cleartextDH, dnsdist::Protocol outgoingProtocol, dnsdist::Protocol incomingProtocol, bool fromBackend)
 {
   (void)qname;
   (void)qtype;
@@ -561,7 +561,7 @@ BOOST_FIXTURE_TEST_CASE(test_IncomingConnection_SelfAnswered, TestFixture)
 {
   const auto tcpRecvTimeout = dnsdist::configuration::getCurrentRuntimeConfiguration().d_tcpRecvTimeout;
   auto local = getBackendAddress("1", 80);
-  ClientState localCS(local, true, false, 0, "", {}, true);
+  ClientState localCS(local, true, false, 0, "", {}, true, false);
   auto tlsCtx = std::make_shared<MockupTLSCtx>();
   localCS.tlsFrontend = std::make_shared<TLSFrontend>(tlsCtx);
 
@@ -823,7 +823,7 @@ BOOST_FIXTURE_TEST_CASE(test_IncomingConnectionWithProxyProtocol_SelfAnswered, T
 {
   const auto tcpRecvTimeout = dnsdist::configuration::getCurrentRuntimeConfiguration().d_tcpRecvTimeout;
   auto local = getBackendAddress("1", 80);
-  ClientState localCS(local, true, false, 0, "", {}, true);
+  ClientState localCS(local, true, false, 0, "", {}, true, false);
   auto tlsCtx = std::make_shared<MockupTLSCtx>();
   localCS.tlsFrontend = std::make_shared<TLSFrontend>(tlsCtx);
 
@@ -967,7 +967,7 @@ BOOST_FIXTURE_TEST_CASE(test_IncomingConnectionWithProxyProtocol_SelfAnswered, T
 BOOST_FIXTURE_TEST_CASE(test_IncomingConnection_BackendNoOOOR, TestFixture)
 {
   auto local = getBackendAddress("1", 80);
-  ClientState localCS(local, true, false, 0, "", {}, true);
+  ClientState localCS(local, true, false, 0, "", {}, true, false);
   auto tlsCtx = std::make_shared<MockupTLSCtx>();
   localCS.tlsFrontend = std::make_shared<TLSFrontend>(tlsCtx);
 
@@ -1939,7 +1939,7 @@ BOOST_FIXTURE_TEST_CASE(test_IncomingConnectionOOOR_BackendOOOR, TestFixture)
 {
   const auto tcpRecvTimeout = dnsdist::configuration::getCurrentRuntimeConfiguration().d_tcpRecvTimeout;
   auto local = getBackendAddress("1", 80);
-  ClientState localCS(local, true, false, 0, "", {}, true);
+  ClientState localCS(local, true, false, 0, "", {}, true, false);
   /* enable out-of-order on the front side */
   localCS.d_maxInFlightQueriesPerConn = 65536;
 
@@ -4179,7 +4179,7 @@ BOOST_FIXTURE_TEST_CASE(test_IncomingConnectionOOOR_BackendNotOOOR, TestFixture)
 {
   const auto tcpRecvTimeout = dnsdist::configuration::getCurrentRuntimeConfiguration().d_tcpRecvTimeout;
   auto local = getBackendAddress("1", 80);
-  ClientState localCS(local, true, false, 0, "", {}, true);
+  ClientState localCS(local, true, false, 0, "", {}, true, false);
   /* enable out-of-order on the front side */
   localCS.d_maxInFlightQueriesPerConn = 65536;
 
@@ -4472,7 +4472,7 @@ BOOST_FIXTURE_TEST_CASE(test_IncomingConnectionOOOR_BackendNotOOOR, TestFixture)
 BOOST_FIXTURE_TEST_CASE(test_Pipelined_Queries_Immediate_Responses, TestFixture)
 {
   auto local = getBackendAddress("1", 80);
-  ClientState localCS(local, true, false, 0, "", {}, true);
+  ClientState localCS(local, true, false, 0, "", {}, true, false);
   auto tlsCtx = std::make_shared<MockupTLSCtx>();
   localCS.tlsFrontend = std::make_shared<TLSFrontend>(tlsCtx);
 

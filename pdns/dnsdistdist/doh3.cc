@@ -523,6 +523,25 @@ static void processDOH3Query(DOH3UnitUniquePtr&& doh3Unit)
       return;
     }
 
+    /* the responses map can be updated at runtime, so we need to take a copy of
+       the shared pointer, increasing the reference counter */
+    auto responsesMap = unit->dsc->df->d_responsesMap;
+    if (responsesMap) {
+      for (const auto& entry : *responsesMap) {
+        if (entry->matches(unit->getHTTPPath())) {
+          const auto& customHeaders = entry->getHeaders();
+          unit->status_code = entry->getStatusCode();
+          unit->response = entry->getContent();
+          if (customHeaders) {
+            unit->headers = *customHeaders;
+          }
+
+          handleImmediateResponse(std::move(unit), "DoH3 custom response");
+          return;
+        }
+      }
+    }
+
     if (unit->query.size() < sizeof(dnsheader)) {
       ++dnsdist::metrics::g_stats.nonCompliantQueries;
       ++clientState.nonCompliantQueries;
@@ -600,7 +619,7 @@ static void processDOH3Query(DOH3UnitUniquePtr&& doh3Unit)
       if (unit->response.size() >= sizeof(dnsheader)) {
         const dnsheader_aligned dnsHeader(unit->response.data());
 
-        handleResponseSent(unit->ids.qname, QType(unit->ids.qtype), 0., unit->ids.origRemote, ComboAddress(), unit->response.size(), *dnsHeader, dnsdist::Protocol::DoH3, dnsdist::Protocol::DoH3, false);
+        handleResponseSent(DNSName(unit->ids.qname), QType(unit->ids.qtype), 0., unit->ids.origRemote, ComboAddress(), unit->response.size(), *dnsHeader, dnsdist::Protocol::DoH3, dnsdist::Protocol::DoH3, false);
       }
       handleImmediateResponse(std::move(unit), "DoH3 self-answered response");
       return;
@@ -642,10 +661,13 @@ static void processDOH3Query(DOH3UnitUniquePtr&& doh3Unit)
     if (downstream->passCrossProtocolQuery(std::move(cpq))) {
       return;
     }
-    // NOLINTNEXTLINE(bugprone-use-after-move): it was only moved if the call succeeded
-    unit = cpq->releaseDU();
-    unit->status_code = 500;
-    handleImmediateResponse(std::move(unit), "DoH3 internal error");
+
+    /* On exceptional cases, cpq is moved but returns false above. So we check to make sure. See https://github.com/PowerDNS/pdns/issues/17109 */
+    if (cpq) {
+      unit = cpq->releaseDU();
+      unit->status_code = 500;
+      handleImmediateResponse(std::move(unit), "DoH3 internal error");
+    }
     return;
   }
   catch (const std::exception& e) {
@@ -742,6 +764,10 @@ static void processH3HeaderEvent(ClientState& clientState, DOH3Frontend& fronten
       std::string_view content(reinterpret_cast<char*>(value), value_len);
       // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast): Quiche API
       auto* headersptr = reinterpret_cast<dnsdist::doh3::h3_headers_t*>(argp);
+      if (headersptr->size() >= dnsdist::doh::MAX_INCOMING_HTTP_HEADERS) {
+        /* be nice but not too nice */
+        return 1;
+      }
       headersptr->emplace(key, content);
       return 0;
     },
@@ -828,6 +854,14 @@ static void processH3DataEvent(ClientState& clientState, DOH3Frontend& frontend,
       break;
     }
 
+    if (len > std::numeric_limits<uint16_t>::max() || (std::numeric_limits<uint16_t>::max() - streamBuffer.size()) < static_cast<size_t>(len)) {
+      VERBOSESLOG(infolog("DOH3 data frame of size %d is too large for a DNS query (we already have %d)", len, streamBuffer.size()),
+                  frontend.d_logger->info(Logr::Info, "DOH3 data frame is too large for a DNS query", "http.stream_id", Logging::Loggable(streamID), "frame_size", Logging::Loggable(len), "existing_payload_size", Logging::Loggable(streamBuffer.size())));
+      conn.d_streamBuffers.erase(streamID);
+      handleImmediateError("DoH3 non-compliant query");
+      return;
+    }
+
     buffer.resize(static_cast<size_t>(len));
     streamBuffer.insert(streamBuffer.end(), buffer.begin(), buffer.end());
   }
@@ -860,11 +894,13 @@ static void processH3Events(ClientState& clientState, DOH3Frontend& frontend, H3
     if (streamID < 0) {
       break;
     }
+    std::unique_ptr<quiche_h3_event, decltype(&quiche_h3_event_free)> eventPtr(event, quiche_h3_event_free);
+    event = nullptr;
     conn.d_headersBuffers.try_emplace(streamID, dnsdist::doh3::h3_headers_t{});
 
-    switch (quiche_h3_event_type(event)) {
+    switch (quiche_h3_event_type(eventPtr.get())) {
     case QUICHE_H3_EVENT_HEADERS: {
-      processH3HeaderEvent(clientState, frontend, conn, client, serverConnID, streamID, event);
+      processH3HeaderEvent(clientState, frontend, conn, client, serverConnID, streamID, eventPtr.get());
       break;
     }
     case QUICHE_H3_EVENT_DATA: {
@@ -877,8 +913,6 @@ static void processH3Events(ClientState& clientState, DOH3Frontend& frontend, H3
     case QUICHE_H3_EVENT_GOAWAY:
       break;
     }
-
-    quiche_h3_event_free(event);
   }
 }
 

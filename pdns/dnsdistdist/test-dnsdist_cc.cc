@@ -164,11 +164,11 @@ static void validateECS(const PacketBuffer& packet, const ComboAddress& expected
   ids.qname = DNSName(reinterpret_cast<const char*>(packet.data()), packet.size(), sizeof(dnsheader), false, &ids.qtype, &ids.qclass);
   // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
   DNSQuestion dnsQuestion(ids, const_cast<PacketBuffer&>(packet));
-  BOOST_CHECK(parseEDNSOptions(dnsQuestion));
-  BOOST_REQUIRE(dnsQuestion.ednsOptions != nullptr);
-  BOOST_CHECK_EQUAL(dnsQuestion.ednsOptions->size(), 1U);
-  const auto& ecsOption = dnsQuestion.ednsOptions->find(EDNSOptionCode::ECS);
-  BOOST_REQUIRE(ecsOption != dnsQuestion.ednsOptions->cend());
+  auto ednsOptions = parseEDNSOptions(dnsQuestion);
+  BOOST_REQUIRE(ednsOptions);
+  BOOST_CHECK_EQUAL(ednsOptions->size(), 1U);
+  const auto& ecsOption = ednsOptions->find(EDNSOptionCode::ECS);
+  BOOST_REQUIRE(ecsOption != ednsOptions->cend());
 
   string expectedOption;
   generateECSOption(expected, expectedOption, expected.sin4.sin_family == AF_INET ? ECSSourcePrefixV4 : ECSSourcePrefixV6);
@@ -2053,7 +2053,7 @@ BOOST_AUTO_TEST_CASE(test_isEDNSOptionInOpt)
 
     /* truncated packet */
     query.resize(query.size() - 1);
-    BOOST_CHECK_THROW(locateEDNSOption(query, EDNSOptionCode::ECS, &optContentStart, &optContentLen), std::range_error);
+    BOOST_CHECK_THROW(locateEDNSOption(query, EDNSOptionCode::ECS, &optContentStart, &optContentLen), std::out_of_range);
   }
 
   {
@@ -2075,7 +2075,7 @@ BOOST_AUTO_TEST_CASE(test_isEDNSOptionInOpt)
 
     /* truncated packet */
     query.resize(query.size() - 1);
-    BOOST_CHECK_THROW(locateEDNSOption(query, EDNSOptionCode::ECS, &optContentStart, &optContentLen), std::range_error);
+    BOOST_CHECK_THROW(locateEDNSOption(query, EDNSOptionCode::ECS, &optContentStart, &optContentLen), std::out_of_range);
   }
 
   {
@@ -2098,7 +2098,7 @@ BOOST_AUTO_TEST_CASE(test_isEDNSOptionInOpt)
 
     /* truncated packet */
     query.resize(query.size() - 1);
-    BOOST_CHECK_THROW(locateEDNSOption(query, EDNSOptionCode::ECS, &optContentStart, &optContentLen), std::range_error);
+    BOOST_CHECK_THROW(locateEDNSOption(query, EDNSOptionCode::ECS, &optContentStart, &optContentLen), std::out_of_range);
   }
 
   {
@@ -2120,7 +2120,7 @@ BOOST_AUTO_TEST_CASE(test_isEDNSOptionInOpt)
 
     /* truncated packet */
     query.resize(query.size() - 1);
-    BOOST_CHECK_THROW(locateEDNSOption(query, 65002, &optContentStart, &optContentLen), std::range_error);
+    BOOST_CHECK_THROW(locateEDNSOption(query, 65002, &optContentStart, &optContentLen), std::out_of_range);
   }
 }
 
@@ -2466,11 +2466,11 @@ BOOST_AUTO_TEST_CASE(test_setEDNSOption)
   BOOST_CHECK_EQUAL(edns0.extRCode, 0U);
   BOOST_CHECK_EQUAL(ntohs(edns0.extFlags), EDNS_HEADER_FLAG_DO);
 
-  BOOST_REQUIRE(parseEDNSOptions(dnsQuestion));
-  BOOST_REQUIRE(dnsQuestion.ednsOptions != nullptr);
-  BOOST_CHECK_EQUAL(dnsQuestion.ednsOptions->size(), 1U);
-  const auto& ecsOption = dnsQuestion.ednsOptions->find(EDNSOptionCode::COOKIE);
-  BOOST_REQUIRE(ecsOption != dnsQuestion.ednsOptions->cend());
+  auto ednsOptions = parseEDNSOptions(dnsQuestion);
+  BOOST_REQUIRE(ednsOptions);
+  BOOST_CHECK_EQUAL(ednsOptions->size(), 1U);
+  const auto& ecsOption = ednsOptions->find(EDNSOptionCode::COOKIE);
+  BOOST_REQUIRE(ecsOption != ednsOptions->cend());
 
   BOOST_REQUIRE_EQUAL(ecsOption->second.values.size(), 1U);
   BOOST_CHECK_EQUAL(cookiesOptionStr, std::string(ecsOption->second.values.at(0).content, ecsOption->second.values.at(0).size));

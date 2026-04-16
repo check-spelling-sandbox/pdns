@@ -21,8 +21,8 @@
  */
 
 #include "dnsdist-opentelemetry.hh"
-#include "misc.hh"
 #include "dnsdist-ecs.hh"
+#include "sanitizer.hh"
 
 #include <memory>
 #include <vector>
@@ -33,10 +33,6 @@
 
 namespace pdns::trace::dnsdist
 {
-
-#ifndef DISABLE_PROTOBUF
-static const KeyValue hostnameAttr{.key = "hostname", .value = {getHostname().value_or("")}};
-#endif
 
 TracesData Tracer::getTracesData()
 {
@@ -58,8 +54,6 @@ TracesData Tracer::getTracesData()
                             .attributes = {data->d_attributes.cbegin(), data->d_attributes.cend()},
                           },
                           .spans = {}}}}}};
-
-    otTrace.resource_spans.at(0).scope_spans.at(0).scope.attributes.push_back(hostnameAttr);
 
     for (auto const& span : data->d_spans) {
       otTrace.resource_spans.at(0).scope_spans.at(0).spans.push_back(
@@ -180,8 +174,12 @@ void Tracer::closeSpan([[maybe_unused]] const SpanID& spanID)
 
     // Only closers are allowed, so this can never happen
     assert(!data->d_spanIDStack.empty());
-    assert(data->d_spanIDStack.back() == spanID);
-    data->d_spanIDStack.pop_back();
+
+    // Preferebly, we'd use d_spanIDStack.pop() after verifing that that back() is the correct spanID.
+    // It turns out that due to dnsdist's multi-threaded nature some backend receivers can create new
+    // spans when receiving backend responses before the closer in the frontend thread is destructed.
+    // So we find the SpanID in the stack and remove it.
+    data->d_spanIDStack.erase(std::find(data->d_spanIDStack.begin(), data->d_spanIDStack.end(), spanID));
   }
 #endif
 }

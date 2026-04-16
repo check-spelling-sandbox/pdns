@@ -352,6 +352,23 @@ static bool handleTLSConfiguration(const Context& context, const dnsdist::rust::
     frontend->d_quicheParams.d_keyLogFile = std::string(bind.tls.key_log_file);
     frontend->d_quicheParams.d_ccAlgo = std::string(bind.quic.congestion_control_algorithm);
     frontend->d_internalPipeBufferSize = bind.quic.internal_pipe_buffer_size;
+
+    if (!bind.doh.responses_map.empty()) {
+      auto newMap = std::make_shared<std::vector<std::shared_ptr<DOHResponseMapEntry>>>();
+      for (const auto& responsesMap : bind.doh.responses_map) {
+        std::optional<std::unordered_map<std::string, std::string>> headers;
+        if (!responsesMap.headers.empty()) {
+          headers = std::unordered_map<std::string, std::string>();
+          for (const auto& header : responsesMap.headers) {
+            headers->emplace(boost::to_lower_copy(std::string(header.key)), std::string(header.value));
+          }
+        }
+        auto entry = std::make_shared<DOHResponseMapEntry>(std::string(responsesMap.expression), responsesMap.status, PacketBuffer(responsesMap.content.begin(), responsesMap.content.end()), headers);
+        newMap->emplace_back(std::move(entry));
+      }
+      frontend->d_responsesMap = std::move(newMap);
+    }
+
     state.doh3Frontend = std::move(frontend);
   }
 #endif /* HAVE_DNS_OVER_HTTP3 */
@@ -806,7 +823,7 @@ static void loadBinds(const Context& context, const ::rust::Vec<dnsdist::rust::s
         std::shared_ptr<DNSCryptContext> dnsCryptContext;
 #endif /* defined(HAVE_DNSCRYPT) */
 
-        auto state = std::make_shared<ClientState>(listeningAddress, protocol != "doq" && protocol != "doh3", bind.reuseport, bind.tcp.fast_open_queue_size, std::string(bind.interface), cpus, bind.enable_proxy_protocol);
+        auto state = std::make_shared<ClientState>(listeningAddress, protocol != "doq" && protocol != "doh3", bind.reuseport, bind.tcp.fast_open_queue_size, std::string(bind.interface), cpus, bind.enable_proxy_protocol, bind.pad_responses);
 
         if (bind.tcp.listen_queue_size > 0) {
           state->tcpListenQueueSize = bind.tcp.listen_queue_size;
@@ -842,7 +859,7 @@ static void loadBinds(const Context& context, const ::rust::Vec<dnsdist::rust::s
         config.d_frontends.emplace_back(std::move(state));
         if (protocol == "do53" || protocol == "dnscrypt") {
           /* also create the UDP listener */
-          state = std::make_shared<ClientState>(ComboAddress(std::string(bind.listen_address), defaultPort), false, bind.reuseport, bind.tcp.fast_open_queue_size, std::string(bind.interface), cpus, bind.enable_proxy_protocol);
+          state = std::make_shared<ClientState>(ComboAddress(std::string(bind.listen_address), defaultPort), false, bind.reuseport, bind.tcp.fast_open_queue_size, std::string(bind.interface), cpus, bind.enable_proxy_protocol, bind.pad_responses);
 #if defined(HAVE_DNSCRYPT)
           state->dnscryptCtx = std::move(dnsCryptContext);
 #endif /* defined(HAVE_DNSCRYPT) */
@@ -1813,12 +1830,19 @@ std::shared_ptr<DNSActionWrapper> getRemoteLogAction(const RemoteLogActionConfig
       actionConfig.tagsToExport->emplace(std::string(tag));
     }
   }
+  if (!config.export_tags_prefixes.empty()) {
+    for (const auto& prefix : config.export_tags_prefixes) {
+      actionConfig.tagsPrefixesToExport.emplace(std::string(prefix));
+    }
+  }
   dnsdist::actions::ProtobufAlterFunction alterFunc;
   if (dnsdist::configuration::yaml::getLuaFunctionFromConfiguration(alterFunc, config.alter_function_name, config.alter_function_code, config.alter_function_file, "remote log action")) {
     actionConfig.alterQueryFunc = std::move(alterFunc);
   }
   actionConfig.useServerID = config.use_server_id;
-  auto action = dnsdist::actions::getRemoteLogAction(actionConfig);
+  actionConfig.tagsExportKeyOnly = config.export_tags_key_only;
+  actionConfig.tagsStripPrefixes = config.export_tags_strip_prefixes;
+  auto action = dnsdist::actions::getRemoteLogAction(std::move(actionConfig));
   return newDNSActionWrapper(std::move(action), config.name);
 #endif
 }
@@ -1847,6 +1871,11 @@ std::shared_ptr<DNSResponseActionWrapper> getRemoteLogResponseAction(const Remot
       actionConfig.tagsToExport->emplace(std::string(tag));
     }
   }
+  if (!config.export_tags_prefixes.empty()) {
+    for (const auto& prefix : config.export_tags_prefixes) {
+      actionConfig.tagsPrefixesToExport.emplace(std::string(prefix));
+    }
+  }
   if (!config.export_extended_errors_to_meta.empty()) {
     actionConfig.exportExtendedErrorsToMeta = std::string(config.export_extended_errors_to_meta);
   }
@@ -1856,7 +1885,9 @@ std::shared_ptr<DNSResponseActionWrapper> getRemoteLogResponseAction(const Remot
   }
   actionConfig.delay = config.delay;
   actionConfig.useServerID = config.use_server_id;
-  auto action = dnsdist::actions::getRemoteLogResponseAction(actionConfig);
+  actionConfig.tagsExportKeyOnly = config.export_tags_key_only;
+  actionConfig.tagsStripPrefixes = config.export_tags_strip_prefixes;
+  auto action = dnsdist::actions::getRemoteLogResponseAction(std::move(actionConfig));
   return newDNSResponseActionWrapper(std::move(action), config.name);
 #endif
 }
@@ -1876,12 +1907,12 @@ void registerProtobufLogger(const ProtobufLoggerConfiguration& config)
     std::vector<std::shared_ptr<RemoteLoggerInterface>> loggers;
     loggers.reserve(config.connection_count);
     for (uint64_t i = 0; i < config.connection_count; i++) {
-      loggers.push_back(std::make_shared<RemoteLogger>(ComboAddress(std::string(config.address)), config.timeout, config.max_queued_entries * 100, config.reconnect_wait_time, dnsdist::configuration::yaml::s_inClientMode));
+      loggers.push_back(std::make_shared<RemoteLogger>(ComboAddress(std::string(config.address)), config.timeout, config.max_queued_entries * 100, config.reconnect_wait_time, dnsdist::configuration::yaml::s_inClientMode, RemoteLogger::FrameSize::Two));
     }
     object = std::shared_ptr<RemoteLoggerInterface>(std::make_shared<RemoteLoggerPool>(std::move(loggers)));
   }
   else {
-    object = std::shared_ptr<RemoteLoggerInterface>(std::make_shared<RemoteLogger>(ComboAddress(std::string(config.address)), config.timeout, config.max_queued_entries * 100, config.reconnect_wait_time, dnsdist::configuration::yaml::s_inClientMode));
+    object = std::shared_ptr<RemoteLoggerInterface>(std::make_shared<RemoteLogger>(ComboAddress(std::string(config.address)), config.timeout, config.max_queued_entries * 100, config.reconnect_wait_time, dnsdist::configuration::yaml::s_inClientMode, RemoteLogger::FrameSize::Two));
   }
   dnsdist::configuration::yaml::registerType<RemoteLoggerInterface>(object, config.name);
 #endif

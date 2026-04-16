@@ -32,7 +32,7 @@ To be able to use more CPU cores for UDP queries processing, it is possible to u
 
 :program:`dnsdist` will then add four identical local binds as if they were different IPs or ports, start four threads to handle incoming queries and let the kernel load balance those randomly to the threads, thus using four CPU cores for rules processing.
 Note that this require ``SO_REUSEPORT`` support in the underlying operating system (added for example in Linux 3.9).
-Please also be aware that doing so will increase lock contention and might not therefore scale linearly, as discussed below.
+Please be aware that doing so will increase lock contention and might not therefore scale linearly, as discussed below.
 
 Another possibility is to use the reuseport option to run several dnsdist processes in parallel on the same host, thus avoiding the lock contention issue at the cost of having to deal with the fact that the different processes will not share information, like statistics or DDoS offenders.
 
@@ -45,11 +45,6 @@ The UDP threads handling the responses from the backends do not use a lot of CPU
 
 When dispatching UDP queries to backend servers, dnsdist keeps track of at most **n** outstanding queries for each backend.
 This number **n** can be tuned by the :func:`setMaxUDPOutstanding` directive, defaulting to 65535 which is the maximum value.
-
-.. versionchanged:: 1.4.0
-  The default was 10240 before 1.4.0
-
-Large installations running dnsdist before 1.4.0 are advised to increase the default value at the cost of a slightly increased memory usage.
 
 Looking at ``udp-in-errors`` in :func:`dumpStats` will reveal whether the system is dropping UDP datagrams because dnsdist does not pick them up fast enough. In that case it might be good to add more :func:`addLocal` directives.
 In the same way, if the number of ``Drops`` in :func:`showServers` increase fast enough, it might mean that the backend is overloaded but also that the UDP received thread is. In that case adding more :func:`newServer`

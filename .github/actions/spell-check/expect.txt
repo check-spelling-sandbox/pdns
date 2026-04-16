@@ -80,6 +80,7 @@ axfrfilter
 Baan
 backgrounding
 backticks
+backupselector
 BADALG
 BADCOOKIE
 badguys
@@ -164,13 +165,16 @@ Cairney
 calculatesoaserial
 calidns
 capf
+catalogzone
 catzone
 Cauquil
+Cavid
 ccache
 ccls
 ccounts
 cdb
 CDBKV
+cdn
 cdnskey
 cds
 Cegetel
@@ -250,6 +254,7 @@ CXXFLAGS
 cxxsettings
 cxxsupport
 Cybertinus
+cython
 daemonized
 daemonizing
 daemontools
@@ -283,13 +288,12 @@ defttl
 Dehaine
 delichik
 DENIC
-descclassname
-descname
 Dessel
 destname
 Detlef
 devicename
 devtoolset
+Deyan
 DHCID
 dhcpd
 dhcpdupdate
@@ -300,7 +304,6 @@ dijk
 dilinger
 Dimitrios
 Directi
-Disqus
 distclean
 djbdns
 dlerror
@@ -334,6 +337,7 @@ DNSR
 dnsrecord
 dnsreplay
 dnsresourcerecord
+dnsresponse
 dnsscan
 dnsscope
 dnssec
@@ -347,11 +351,13 @@ dnsupdate
 dnsviz
 dnswasher
 dnszone
+dnt
 Dobrawy
 docnamecachelookup
 documentclass
 documentwrapper
 Dohmen
+dohpath
 domaininfo
 domainmetadata
 domainname
@@ -407,7 +413,6 @@ elgoog
 elisp
 elpa
 emacs
-Emph
 endblock
 endbr
 Enden
@@ -416,7 +421,6 @@ Ensar
 ents
 envoutput
 epel
-eqno
 Eriksson
 errlog
 errorlevels
@@ -431,6 +435,7 @@ Exx
 ezdns
 Faerch
 failedservers
+Fallah
 famfo
 farsightsec
 fcontext
@@ -479,7 +484,6 @@ gcna
 gcovr
 gdpr
 Geijn
-genindex
 geobackend
 geoipbackend
 geolocated
@@ -518,7 +522,6 @@ gnutls
 godbc
 godbcbackend
 Godwottery
-goodmatch
 goracle
 goraclebackend
 gouv
@@ -534,7 +537,6 @@ gsqlite
 gss
 gssapi
 gtld
-guilabel
 Guo
 gutenberg
 Gyselinck
@@ -556,6 +558,7 @@ Hendriks
 Henk
 Hensbergen
 Heuer
+HHIT
 hidesoadetails
 hidettl
 highlighttable
@@ -563,7 +566,6 @@ Hiljanen
 hinfo
 hitrate
 hkraal
-hll
 Hoentjen
 Hofstaedtler
 Holger
@@ -589,13 +591,13 @@ ifportup
 ifurlextup
 ifurlup
 ihsinme
+ilya
 Ilyin
 imenu
 Imhard
 incbin
 includeboilerplate
 includerings
-indextable
 inetutils
 infolog
 infosecinstitute
@@ -603,8 +605,10 @@ initscript
 Inno
 innodb
 installable
+instrumenta
 internic
 interoperation
+IPbackend
 ipcipher
 ipcrypt
 ipdecrypt
@@ -644,7 +648,6 @@ jpmens
 jsonstat
 jsrender
 Juergen
-jumpbox
 Juraj
 Kadyshev
 Kaminsky
@@ -666,7 +669,6 @@ keysize
 keystyle
 keytab
 keytype
-keywordmatches
 kickdaddy
 Kirill
 Klebermass
@@ -686,6 +688,7 @@ kskrollcdnskey
 ktls
 KTNAME
 Kuehrer
+Kushwaha
 kvs
 KVTo
 kxdpgun
@@ -721,7 +724,6 @@ LIBPQ
 libsodium
 lightningstream
 Lindqvist
-linenos
 linenum
 linkcolor
 lintian
@@ -736,7 +738,6 @@ loadbalancer
 loadbalancing
 localaddr
 localip
-localtoc
 locaweb
 lochiiconnectivity
 lockfree
@@ -747,8 +748,6 @@ Loopia
 Lorbach
 lordievader
 Louwers
-loweralpha
-lowerroman
 Lrhazi
 lsock
 lsp
@@ -777,6 +776,7 @@ malware
 Mamane
 mapasync
 Mapbox
+mapsize
 mariadb
 Markmann
 Massar
@@ -795,10 +795,10 @@ Mekking
 melpa
 memlock
 Memusage
-menuselection
 metadatabase
 metadatas
 metainformation
+metaprogramming
 metricnames
 metricscarbon
 Meulen
@@ -819,7 +819,6 @@ MOADNS
 Modderman
 modeline
 modifyingpolicydecisions
-modindex
 monshouwer
 motherboards
 mozilla
@@ -857,6 +856,7 @@ mywebapp
 namedroppers
 nameserving
 Nankai
+Naoki
 naptr
 Nauck
 Navarrete
@@ -959,6 +959,7 @@ Odintsov
 Oestreicher
 offsite
 oftc
+ohttp
 Olafur
 Omroep
 openapis
@@ -1121,6 +1122,7 @@ qytpe
 ragel
 raii
 Rak
+Ramsanker
 randombackend
 randombit
 randomisation
@@ -1156,7 +1158,6 @@ reid
 reimplementation
 Reinier
 Rejo
-relbar
 relbarbgcolor
 relbarlinkcolor
 relbartextcolor
@@ -1176,7 +1177,6 @@ respawned
 respawning
 respout
 respsizes
-reuseds
 reuseport
 RFCs
 rhel
@@ -1195,6 +1195,7 @@ Rolff
 rolltype
 Rosmalen
 roundrobin
+rozentsvaig
 rping
 rpms
 rpz
@@ -1313,7 +1314,6 @@ sortlist
 sourcecode
 SOURCEDIR
 sourceforge
-sourcelink
 sourceware
 Spaans
 Spackages
@@ -1336,6 +1336,7 @@ srv
 sshfp
 SSQ
 stacksize
+stampfile
 starttransaction
 Stasic
 statbag
@@ -1497,8 +1498,6 @@ unreachables
 unshadowing
 updatepolicy
 upgradeable
-upperalpha
-upperroman
 urandom
 usecase
 userbase
@@ -1516,7 +1515,6 @@ Vasiliy
 Veldhuyzen
 Verheijen
 Verschuren
-versionmodified
 Viala
 viewcode
 visitedlinkcolor
@@ -1530,6 +1528,7 @@ VRF
 vulns
 Waidner
 WAITFORONE
+Wakamatsu
 wal
 warnlog
 wds
@@ -1573,7 +1572,9 @@ wrandom
 wrapv
 wuh
 Wzs
+Xabier
 Xander
+Xav
 xchacha
 xdb
 xdp

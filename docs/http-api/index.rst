@@ -3,6 +3,7 @@ Built-in Webserver and HTTP API
 
 The PowerDNS Authoritative Server features a built-in webserver that exposes a JSON/REST API.
 This API allows for controlling several functions, reading statistics and modifying zone content, metadata and DNSSEC key material.
+The API has an `OpenAPI definition <redoc.html>`__.
 
 Webserver
 ---------
@@ -21,6 +22,12 @@ The following webserver related configuration items are available:
 * :ref:`setting-webserver-allow-from`: Netmasks that are allowed to connect to the webserver (not relevant if :ref:`setting-webserver-address` is set to a UNIX domain socket).
 * :ref:`setting-webserver-max-bodysize`: Maximum request/response body size in megabytes
 * :ref:`setting-webserver-connection-timeout`: Request/response timeout in seconds
+* :ref:`setting-webserver-max-concurrent-connections`: Maximum number of allowed concurrent connections to the web server.
+
+.. warning::
+
+   To achieve defense-in-depth, expose the webserver only to client addresses that have a real need for access.
+   Network access is configured by setting :ref:`setting-webserver-address` and :ref:`setting-webserver-allow-from`.
 
 
 Metrics Endpoint
@@ -313,8 +320,8 @@ Working with the API
 
 This chapter describes the PowerDNS Authoritative API.
 When creating an API wrapper (for instance when fronting multiple API's), it is recommended to stick to this API specification.
-The API is described in the `OpenAPI format <https://www.openapis.org/>`_, also known as "Swagger", and this description is `available <https://raw.githubusercontent.com/PowerDNS/pdns/master/docs/http-api/swagger/authoritative-api-swagger.yaml>`_. It can also be obtained from a running server if the administrator of that server has enabled the API; it
-is available at the  `/api/docs` endpoint in both YAML and JSON formats (the 'Accept' header can be used to indicate the
+The API is described in the `OpenAPI 3.1 format <https://www.openapis.org/>`_, and this description is `available <https://raw.githubusercontent.com/PowerDNS/pdns/master/docs/http-api/openapi/authoritative-api-openapi.yaml>`_. It can also be obtained from a running server if the administrator of that server has enabled the API; it
+is available at the `/api/docs` endpoint in both YAML and JSON formats (the 'Accept' header can be used to indicate the
 desired format).
 
 Authentication
@@ -333,8 +340,7 @@ Response code ``4xx`` or ``5xx``, depending on the situation.
 
 Error responses have a JSON body of this format:
 
-.. openapi:: swagger/authoritative-api-swagger.yaml
-  :definitions: Error
+.. json:schema:: Error
 
 Data format
 ~~~~~~~~~~~

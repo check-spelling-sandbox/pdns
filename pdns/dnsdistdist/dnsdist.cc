@@ -563,6 +563,10 @@ bool processResponseAfterRules(PacketBuffer& response, DNSResponse& dnsResponse,
     }
   }
 
+  if (dnsResponse.ids.cs->d_padResponses && !dnsResponse.ids.ednsAdded) {
+    dnsdist::edns::addEDNSPadding(dnsResponse.getMutableData(), dnsResponse.getMaximumSize());
+  }
+
 #ifdef HAVE_DNSCRYPT
   if (!muted) {
     if (!encryptResponse(response, dnsResponse.getMaximumSize(), dnsResponse.overTCP(), dnsResponse.ids.dnsCryptQuery)) {
@@ -633,17 +637,17 @@ bool sendUDPResponse(int origFD, const PacketBuffer& response, [[maybe_unused]] 
   return true;
 }
 
-void handleResponseSent(const InternalQueryState& ids, double latencyUs, const ComboAddress& client, const ComboAddress& backend, unsigned int size, const dnsheader& cleartextDH, dnsdist::Protocol outgoingProtocol, bool fromBackend)
+void handleResponseSent(InternalQueryState& ids, double latencyUs, const ComboAddress& client, const ComboAddress& backend, unsigned int size, const dnsheader& cleartextDH, dnsdist::Protocol outgoingProtocol, bool fromBackend)
 {
-  handleResponseSent(ids.qname, ids.qtype, latencyUs, client, backend, size, cleartextDH, outgoingProtocol, ids.protocol, fromBackend);
+  handleResponseSent(std::move(ids.qname), ids.qtype, latencyUs, client, backend, size, cleartextDH, outgoingProtocol, ids.protocol, fromBackend);
 }
 
-void handleResponseSent(const DNSName& qname, const QType& qtype, double latencyUs, const ComboAddress& client, const ComboAddress& backend, unsigned int size, const dnsheader& cleartextDH, dnsdist::Protocol outgoingProtocol, dnsdist::Protocol incomingProtocol, bool fromBackend)
+void handleResponseSent(DNSName&& qname, const QType& qtype, double latencyUs, const ComboAddress& client, const ComboAddress& backend, unsigned int size, const dnsheader& cleartextDH, dnsdist::Protocol outgoingProtocol, dnsdist::Protocol incomingProtocol, bool fromBackend)
 {
   if (g_rings.shouldRecordResponses()) {
     timespec now{};
     gettime(&now);
-    g_rings.insertResponse(now, client, qname, qtype, static_cast<unsigned int>(latencyUs), size, cleartextDH, backend, outgoingProtocol);
+    g_rings.insertResponse(now, client, std::move(qname), qtype, static_cast<unsigned int>(latencyUs), size, cleartextDH, backend, outgoingProtocol);
   }
 
   switch (cleartextDH.rcode) {
@@ -1305,8 +1309,8 @@ static bool isUDPQueryAcceptable(ClientState& clientState, const struct msghdr* 
     /* message was too large for our buffer */
     VERBOSESLOG(infolog("Dropping message too large for our buffer"),
                 dnsdist::logging::getTopLogger("udp-query")->info(Logr::Info, "Dropping query from client that is too large for our buffer", "client.address", Logging::Loggable(remote), "destination.address", Logging::Loggable(dest), "frontend.address", Logging::Loggable(clientState.local)));
-    ++clientState.nonCompliantQueries;
     ++dnsdist::metrics::g_stats.nonCompliantQueries;
+    ++clientState.nonCompliantQueries;
     return false;
   }
 
@@ -1435,6 +1439,10 @@ static bool prepareOutgoingResponse([[maybe_unused]] const ClientState& clientSt
     for (const auto& ede : *dnsResponse.ids.d_extendedErrors) {
       dnsdist::edns::addExtendedDNSError(dnsResponse.getMutableData(), dnsResponse.getMaximumSize(), ede);
     }
+  }
+
+  if (dnsResponse.ids.cs->d_padResponses && !dnsResponse.ids.ednsAdded) {
+    dnsdist::edns::addEDNSPadding(dnsResponse.getMutableData(), dnsResponse.getMaximumSize());
   }
 
   if (cacheHit) {
@@ -2048,7 +2056,7 @@ static void processUDPQuery(ClientState& clientState, const struct msghdr* msgh,
       if (dnsQuestion.ids.delayMsec == 0 && responsesVect != nullptr) {
         queueResponse(query, dest, remote, (*responsesVect)[*queuedResponses], respIOV, respCBuf);
         (*queuedResponses)++;
-        handleResponseSent(dnsQuestion.ids.qname, dnsQuestion.ids.qtype, 0., remote, ComboAddress(), query.size(), *dnsHeader, dnsdist::Protocol::DoUDP, dnsdist::Protocol::DoUDP, false);
+        handleResponseSent(std::move(dnsQuestion.ids.qname), dnsQuestion.ids.qtype, 0., remote, ComboAddress(), query.size(), *dnsHeader, dnsdist::Protocol::DoUDP, dnsdist::Protocol::DoUDP, false);
         return;
       }
 #endif /* defined(HAVE_RECVMMSG) && defined(HAVE_SENDMMSG) && defined(MSG_WAITFORONE) */
@@ -2056,7 +2064,7 @@ static void processUDPQuery(ClientState& clientState, const struct msghdr* msgh,
       /* we use dest, always, because we don't want to use the listening address to send a response since it could be 0.0.0.0 */
       sendUDPResponse(clientState.udpFD, query, dnsQuestion.ids.delayMsec, dest, remote);
 
-      handleResponseSent(dnsQuestion.ids.qname, dnsQuestion.ids.qtype, 0., remote, ComboAddress(), query.size(), *dnsHeader, dnsdist::Protocol::DoUDP, dnsdist::Protocol::DoUDP, false);
+      handleResponseSent(std::move(dnsQuestion.ids.qname), dnsQuestion.ids.qtype, 0., remote, ComboAddress(), query.size(), *dnsHeader, dnsdist::Protocol::DoUDP, dnsdist::Protocol::DoUDP, false);
       return;
     }
 
@@ -2170,7 +2178,7 @@ bool XskProcessQuery(ClientState& clientState, XskPacket& packet)
         packet.addDelay(dnsQuestion.ids.delayMsec);
       }
       const auto dnsHeader = dnsQuestion.getHeader();
-      handleResponseSent(ids.qname, ids.qtype, 0., remote, ComboAddress(), query.size(), *dnsHeader, dnsdist::Protocol::DoUDP, dnsdist::Protocol::DoUDP, false);
+      handleResponseSent(std::move(ids.qname), ids.qtype, 0., remote, ComboAddress(), query.size(), *dnsHeader, dnsdist::Protocol::DoUDP, dnsdist::Protocol::DoUDP, false);
       return true;
     }
 
@@ -2279,7 +2287,7 @@ static void MultipleMessagesUDPClientThread(ClientState* clientState)
 
     /* block until we have at least one message ready, but return
        as many as possible to save the syscall costs */
-    msgsGot = recvmmsg(clientState->udpFD, msgVec.data(), vectSize, MSG_WAITFORONE | MSG_TRUNC, nullptr);
+    msgsGot = recvmmsg(clientState->udpFD, msgVec.data(), vectSize, MSG_WAITFORONE, nullptr);
     if (msgsGot <= 0) {
       int savederrno = errno;
       VERBOSESLOG(infolog("Getting UDP messages via recvmmsg() failed with: %s", stringerror(savederrno)),
@@ -2298,6 +2306,13 @@ static void MultipleMessagesUDPClientThread(ClientState* clientState)
       const ComboAddress& remote = recvData[msgIdx].remote;
 
       if (static_cast<size_t>(got) < sizeof(struct dnsheader)) {
+        ++dnsdist::metrics::g_stats.nonCompliantQueries;
+        ++clientState->nonCompliantQueries;
+        continue;
+      }
+
+      if ((msgh->msg_flags & MSG_TRUNC) != 0) {
+        /* message was too large for our buffer */
         ++dnsdist::metrics::g_stats.nonCompliantQueries;
         ++clientState->nonCompliantQueries;
         continue;
@@ -3433,17 +3448,17 @@ static void initFrontends(const CommandLineParameters& cmdLine)
 
     for (const auto& loc : cmdLine.locals) {
       /* UDP */
-      frontends.emplace_back(std::make_unique<ClientState>(ComboAddress(loc, 53), false, false, 0, "", std::set<int>{}, true));
+      frontends.emplace_back(std::make_unique<ClientState>(ComboAddress(loc, 53), false, false, 0, "", std::set<int>{}, true, false));
       /* TCP */
-      frontends.emplace_back(std::make_unique<ClientState>(ComboAddress(loc, 53), true, false, 0, "", std::set<int>{}, true));
+      frontends.emplace_back(std::make_unique<ClientState>(ComboAddress(loc, 53), true, false, 0, "", std::set<int>{}, true, false));
     }
   }
 
   if (frontends.empty()) {
     /* UDP */
-    frontends.emplace_back(std::make_unique<ClientState>(ComboAddress("127.0.0.1", 53), false, false, 0, "", std::set<int>{}, true));
+    frontends.emplace_back(std::make_unique<ClientState>(ComboAddress("127.0.0.1", 53), false, false, 0, "", std::set<int>{}, true, false));
     /* TCP */
-    frontends.emplace_back(std::make_unique<ClientState>(ComboAddress("127.0.0.1", 53), true, false, 0, "", std::set<int>{}, true));
+    frontends.emplace_back(std::make_unique<ClientState>(ComboAddress("127.0.0.1", 53), true, false, 0, "", std::set<int>{}, true, false));
   }
 
   dnsdist::configuration::updateImmutableConfiguration([&frontends](dnsdist::configuration::ImmutableConfiguration& config) {
@@ -3525,9 +3540,9 @@ static void startFrontends()
     std::thread udpThreadHandle(udpClientThread, udpStates);
     udpThreadHandle.detach();
   }
-  if (!tcpStates.empty()) {
-    g_tcpclientthreads = std::make_unique<TCPClientCollection>(1, tcpStates);
-  }
+
+  /* Gives TCP client threads by default */
+  g_tcpclientthreads = std::make_unique<TCPClientCollection>(1, tcpStates);
 #endif /* USE_SINGLE_ACCEPTOR_THREAD */
 }
 }

@@ -1,6 +1,29 @@
 Upgrade Guide
 =============
 
+2.1.0-beta2 to 2.1.0
+--------------------
+
+The :doc:`reference/ottrace` YAML configuration has changed.
+It is now a structure with a single ``enabled`` field.
+
+Old:
+
+.. code-block:: yaml
+
+  logging:
+    open_telemetry_tracing: true
+
+New:
+
+.. code-block:: yaml
+
+  logging:
+    open_telemetry_tracing:
+      enabled: true
+
+The use of :attr:`DNSQuestion.dh` is now deprecated and strongly discouraged as it has proven to be error-prone. :meth:`DNSQuestion.getHeader` and :meth:`DNSQuestion.setHeader` should be used instead.
+
 2.0.x to 2.1.0
 --------------
 
@@ -14,6 +37,8 @@ support HTTP/2, but might be one in setups running dnsdist behind a reverse-prox
 Structured logging is now enabled by default, and can be disabled via :func:`setStructuredLogging` or the ``--structured-logging`` command-line switch.
 
 :program:`dnsdist` now looks by default for a configuration file named ``dnsdist.yml`` in the system configuration directory (determined by the ``SYSCONFDIR`` variable during compilation), instead of ``dnsdist.conf``. Please be aware that if a file named ``dnsdist.lua`` is present in the system configuration directory, it will also be loaded but without the ability to use configuration directives. Please see :doc:`the YAML settings reference <reference/yaml-settings>` for more information.
+
+The webserver no longer allows cross-origin HTTP requests by default, please have a look at ``webserver.allow_cross_origin_requests`` (:func:`setWebserverConfig`'s ``allowCrossOriginRequests`` for Lua-based configurations) if your setup requires them.
 
 1.9.x to 2.0.0
 --------------

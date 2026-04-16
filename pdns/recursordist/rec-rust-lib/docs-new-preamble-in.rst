@@ -273,9 +273,11 @@ As of version 5.1.0, a protobuf server is defined as
     logResponses: true
     exportTypes: [A, AAAA, CNAME] Sequence of QType names
     logMappedFrom: false
+    frame4: false # since 5.5.0
+    strategy: All # since 5.5.0
 
 .. versionchanged:: 5.3.0 The aliases ``max_queued_entries``, ``reconnect_wait_time``, ``tagged_only``, ``async_connect``, ``log_queries``, ``log_responses``, ``export_types``, ``log_mapped_from`` have been introduced.
-    
+
 An example of a ``protobuf_servers`` entry, which is a sequence of `ProtobufServer`_:
 
 .. code-block:: yaml
@@ -404,8 +406,11 @@ As of version 5.1.0, an RPZ entry is defined as
     axfrTimeout: number
     dumpFile: string
     seedFile: string
+    wipePacketCache: true
 
 .. versionchanged:: 5.3.0 The aliases ``defpol_override_local_data``, ``extended_error_code``, ``extended_error_extra``, ``include_soa``, ``ignore_duplicates``, ``policy_name``, ``overriddes_gettag``, ``zone_size_hint``, ``max_received_bytes``, ``local_address``, ``axfr_timeout``, ``dump_file``, ``seed_file`` have been introduced.
+
+.. versionchanged:: 5.5.0 The flag ``wipePacketCache`` (default ``true``) has been added. When set, relevant names from qname triggers are cleared from the packet cache on (re)load of the RPZ.
 
 If ``addresses`` is empty, the ``name`` field specifies the path name of the RPZ; otherwise, the ``name`` field defines the name of the RPZ.
 Starting with version 5.2.0, names instead of IP addresses can be used for ``addresses`` if

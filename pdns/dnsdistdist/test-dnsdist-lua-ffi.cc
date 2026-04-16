@@ -167,6 +167,21 @@ BOOST_AUTO_TEST_CASE(test_Query)
   }
 
   {
+    // dnsdist_ffi_dnsquestion_get_header_copy
+    dnsheader copy{};
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+    BOOST_REQUIRE(dnsdist_ffi_dnsquestion_get_header_copy(&lightDQ, reinterpret_cast<char*>(&copy), sizeof(copy)));
+    BOOST_CHECK(memcmp(&copy, pwQ.getHeader(), sizeof(dnsheader)) == 0);
+  }
+
+  {
+    // dnsdist_ffi_dnsquestion_get_data
+    const auto* data = dnsdist_ffi_dnsquestion_get_data(&lightDQ);
+    BOOST_REQUIRE(data != nullptr);
+    BOOST_CHECK(memcmp(data, query.data(), query.size()) == 0);
+  }
+
+  {
     // dnsdist_ffi_dnsquestion_get_len, dnsdist_ffi_dnsquestion_get_size
     BOOST_CHECK_EQUAL(dnsdist_ffi_dnsquestion_get_len(&lightDQ), query.size());
     BOOST_CHECK_EQUAL(dnsdist_ffi_dnsquestion_get_size(&lightDQ), query.size());
@@ -381,7 +396,7 @@ BOOST_AUTO_TEST_CASE(test_Query)
   {
     /* frontend without and interface set */
     const std::string interface{};
-    ClientState frontend(ids.origDest, false, false, 0, interface, {}, false);
+    ClientState frontend(ids.origDest, false, false, 0, interface, {}, false, false);
     ids.cs = &frontend;
     const auto* itfPtr = dnsdist_ffi_dnsquestion_get_incoming_interface(&lightDQ);
     BOOST_REQUIRE(itfPtr != nullptr);
@@ -391,7 +406,7 @@ BOOST_AUTO_TEST_CASE(test_Query)
   {
     /* frontend with interface set */
     const std::string interface{"interface-name-0"};
-    ClientState frontend(ids.origDest, false, false, 0, interface, {}, false);
+    ClientState frontend(ids.origDest, false, false, 0, interface, {}, false, false);
     ids.cs = &frontend;
     const auto* itfPtr = dnsdist_ffi_dnsquestion_get_incoming_interface(&lightDQ);
     BOOST_REQUIRE(itfPtr != nullptr);
@@ -851,7 +866,7 @@ BOOST_AUTO_TEST_CASE(test_RingBuffers)
   BOOST_CHECK_EQUAL(g_rings.getNumberOfQueryEntries(), 0U);
 
   g_rings.insertQuery(now, requestor1, qname, qtype, size, dh, protocol);
-  g_rings.insertResponse(now, requestor1, qname, qtype, responseTime, size, dh, backend, outgoingProtocol);
+  g_rings.insertResponse(now, requestor1, DNSName(qname), qtype, responseTime, size, dh, backend, outgoingProtocol);
 
   dnsdist_ffi_ring_entry_list_t* list = nullptr;
 

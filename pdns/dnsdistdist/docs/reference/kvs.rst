@@ -45,11 +45,9 @@ If the value found in the LMDB database for the key '\\8powerdns\\3com\\0' was '
 
 .. class:: KeyValueStore
 
-  .. versionadded:: 1.4.0
-
   Represents a Key Value Store
 
-  .. method:: KeyValueStore:lookup(key [, wireFormat])
+  .. method:: lookup(key [, wireFormat])
 
     Does a lookup into the corresponding key value store, and return the result as a string.
     The key can be a :class:`ComboAddress` obtained via the :func:`newCA`, a :class:`DNSName` obtained via the :func:`newDNSName` function, or a raw string.
@@ -57,7 +55,7 @@ If the value found in the LMDB database for the key '\\8powerdns\\3com\\0' was '
     :param ComboAddress, DNSName or string key: The key to look up
     :param bool wireFormat: If the key is DNSName, whether to use to do the lookup in wire format (default) or in plain text
 
-  .. method:: KeyValueStore:lookupSuffix(key [, minLabels [, wireFormat]])
+  .. method:: lookupSuffix(key [, minLabels [, wireFormat]])
 
     Does a suffix-based lookup into the corresponding key value store, and return the result as a string.
     The key should be a :class:`DNSName` object obtained via the :func:`newDNSName` function, and several lookups will be done, removing one label from the name at a time until a match has been found or there is no label left.
@@ -67,28 +65,18 @@ If the value found in the LMDB database for the key '\\8powerdns\\3com\\0' was '
     :param int minLabels: The minimum number of labels to do a lookup for. Default is 0 which means unlimited
     :param bool wireFormat: Whether to do the lookup in wire format (default) or in plain text
 
-  .. method:: KeyValueStore:reload()
+  .. method:: reload()
 
     Reload the database if this is supported by the underlying store. As of 1.4.0, only CDB stores can be reloaded, and this method is a no-op for LMDB stores.
 
 
 .. function:: KeyValueLookupKeyQName([wireFormat]) -> KeyValueLookupKey
 
-  .. versionadded:: 1.4.0
-
   Return a new KeyValueLookupKey object that, when passed to :func:`KeyValueStoreLookupAction` or :func:`KeyValueStoreLookupRule`, will return the qname of the query in DNS wire format.
 
   :param bool wireFormat: Whether to do the lookup in wire format (default) or in plain text
 
 .. function:: KeyValueLookupKeySourceIP([v4mask [, v6mask]]) -> KeyValueLookupKey
-
-  .. versionadded:: 1.4.0
-
-  .. versionchanged:: 1.5.0
-    Optional parameters ``v4mask`` and ``v6mask`` added.
-
-  .. versionchanged:: 1.7.0
-    Optional parameter ``includePort`` added.
 
   Return a new KeyValueLookupKey object that, when passed to :func:`KeyValueStoreLookupAction` or :func:`KeyValueStoreLookupRule`, will return the source IP of the client in network byte-order.
 
@@ -97,8 +85,6 @@ If the value found in the LMDB database for the key '\\8powerdns\\3com\\0' was '
   :param int includePort: Whether to append the port (in network byte-order) after the address. Default is false
 
 .. function:: KeyValueLookupKeySuffix([minLabels [, wireFormat]]) -> KeyValueLookupKey
-
-  .. versionadded:: 1.4.0
 
   Return a new KeyValueLookupKey object that, when passed to :func:`KeyValueStoreLookupAction` or :func:`KeyValueStoreLookupRule`, will return a vector of keys based on the labels of the qname in DNS wire format or plain text.
   For example if the qname is sub.domain.powerdns.com. the following keys will be returned:
@@ -120,15 +106,11 @@ If the value found in the LMDB database for the key '\\8powerdns\\3com\\0' was '
 
 .. function:: KeyValueLookupKeyTag(tagName) -> KeyValueLookupKey
 
-  .. versionadded:: 1.4.0
-
   Return a new KeyValueLookupKey object that, when passed to :func:`KeyValueStoreLookupAction`, will return the value of the corresponding tag for this query, if it exists.
 
   :param str tagName: The name of the tag.
 
 .. function:: newCDBKVStore(filename, refreshDelay) -> KeyValueStore
-
-  .. versionadded:: 1.4.0
 
   Return a new KeyValueStore object associated to the corresponding CDB database. The modification time
   of the CDB file will be checked every 'refreshDelay' second and the database re-opened if needed.
@@ -137,11 +119,6 @@ If the value found in the LMDB database for the key '\\8powerdns\\3com\\0' was '
   :param int refreshDelays: The delay in seconds between two checks of the database modification time. 0 means disabled
 
 .. function:: newLMDBKVStore(filename, dbName [, noLock]) -> KeyValueStore
-
-  .. versionadded:: 1.4.0
-
-  .. versionchanged:: 1.7.0
-    Added the optional parameter ``noLock``.
 
   Return a new KeyValueStore object associated to the corresponding LMDB database. The database must have been created
   with the ``MDB_NOSUBDIR`` flag. Since 1.7.0, the database is opened with the ``MDB_READONLY`` flag, and optionally with ``MDB_NOLOCK`` if ``noLock`` is set to true.

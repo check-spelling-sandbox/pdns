@@ -702,6 +702,9 @@ int followCNAMERecords(vector<DNSRecord>& ret, const QType qtype, int rcode)
 {
   vector<DNSRecord> resolved;
   DNSName target;
+  // Docs do not specify *which* CNAME is picked. We take the first
+  // and do not mind the section. Maybe the last in the answer section
+  // would be what users expect?
   for (const DNSRecord& record : ret) {
     if (record.d_type == QType::CNAME) {
       auto rec = getRR<CNAMERecordContent>(record);
@@ -1216,6 +1219,7 @@ void startDoResolve(void* arg) // NOLINT(readability-function-cognitive-complexi
 
       if (luaconfsLocal->dfe.getClientPolicy(comboWriter->d_source, resolver.d_discardedPolicies, appliedPolicy)) {
         mergePolicyTags(comboWriter->d_policyTags, appliedPolicy.getTags());
+        variableAnswer = true;
       }
     }
 
@@ -1537,11 +1541,12 @@ void startDoResolve(void* arg) // NOLINT(readability-function-cognitive-complexi
 #endif /* NOD ENABLED */
 
         if (t_protobufServers.servers) {
-          // Max size is 64k, but we're conservative here, as other fields are added after the answers have been added
-          // If a single answer causes a too big protobuf message, it will be dropped by queueData()
-          // But note addRR has code to prevent that
-          if (pbMessage.size() < std::numeric_limits<uint16_t>::max() / 2) {
-            pbMessage.addRR(record, luaconfsLocal->protobufExportConfig.exportTypes, udr);
+          // Max size is 64k for 2 bytes frames, but we're conservative here, as other fields are
+          // added after the answers have been added. If a single answer causes a too big protobuf
+          // message, it will be dropped by queueData(), but note addRR has code to prevent that.
+          const auto limit = (t_protobufServers.servers->size() > 0 ? t_protobufServers.servers->at(0)->maxSize() : std::numeric_limits<uint16_t>::max()) / 2;
+          if (pbMessage.size() < limit) {
+            pbMessage.addRR(record, luaconfsLocal->protobufExportConfig.exportTypes, udr, limit);
           }
         }
       }
@@ -1876,7 +1881,7 @@ void startDoResolve(void* arg) // NOLINT(readability-function-cognitive-complexi
         pbMessage.setOpenTelemetryTraceID(resolver.d_otTrace.trace_id);
       }
       if (comboWriter->d_logResponse) {
-        protobufLogResponse(pbMessage);
+        protobufLogResponse(pbMessage, comboWriter->d_mdp.d_qname, luaconfsLocal->protobufExportConfig.logMappedFrom ? comboWriter->d_mappedSource : comboWriter->d_source);
       }
     }
 
